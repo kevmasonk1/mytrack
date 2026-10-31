@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "MyTrack",
+  "short_name": "MyTrack",
+  "description": "Food, calorie & sins tracker with barcode scanning",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#F5F5FB",
+  "theme_color": "#2E31B7",
+  "categories": ["health", "food", "lifestyle"],
+  "lang": "en-GB",
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Scan a barcode", "short_name": "Scan", "url": "/?add=scan", "icons": [{"src": "/icon-maskable-192.png", "sizes": "192x192"}]},
+    {"name": "Quick add", "short_name": "Quick add", "url": "/?add=quick", "icons": [{"src": "/icon-maskable-192.png", "sizes": "192x192"}]},
+    {"name": "Log weight", "short_name": "Weight", "url": "/?tab=progress", "icons": [{"src": "/icon-maskable-192.png", "sizes": "192x192"}]}
+  ],
+  "screenshots": [
+    {"src": "/screenshot-today.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Today: sins, calories and meals"},
+    {"src": "/screenshot-scan.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Scan a barcode to log food"}
+  ]
+}

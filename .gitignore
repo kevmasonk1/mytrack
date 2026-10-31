@@ -1,0 +1,29 @@
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.bak
+*.bak-*
+*.before
+
+# --- Runtime data, uploads, databases, backups ---
+data/
+uploads/
+backups/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+healthfix-backup-*/
+
+# --- Node / Python / logs / OS / editor ---
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.venv/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

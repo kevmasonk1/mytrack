@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax check JavaScript
+        run: git ls-files '*.js' '*.cjs' '*.mjs' | grep -v '^node_modules/' | xargs -r -n1 node --check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax check Python
+        run: git ls-files '*.py' | xargs -r python -m py_compile
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: {"include":[{"name":"app","context":".","dockerfile":"Dockerfile","port":"8000","path":"/","run_args":""}]}
+    name: build ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          load: true
+          tags: app:ci
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: Smoke test (container starts and answers)
+        if: ${{ matrix.port != '' }}
+        env:
+          PORT_IN: ${{ matrix.port }}
+          URL_PATH: ${{ matrix.path }}
+          RUN_ARGS: ${{ matrix.run_args }}
+        run: |
+          # shellcheck disable=SC2086
+          docker run -d --name ci -p 18080:"$PORT_IN" $RUN_ARGS app:ci
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:18080$URL_PATH" || true)
+            if [ "$code" -ge 200 ] && [ "$code" -lt 500 ]; then echo "OK - HTTP $code"; exit 0; fi
+            sleep 3
+          done
+          echo "Container did not answer. Logs:"; docker logs ci; exit 1

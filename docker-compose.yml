@@ -1,0 +1,32 @@
+services:
+  mytrack:
+    build: .
+    container_name: mytrack
+    # app files are read live from ./app and reloaded on change — no rebuild needed for app updates
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--reload", "--reload-dir", "/app"]
+    restart: unless-stopped
+    ports:
+      - "2016:8000"
+    environment:
+      - ADMIN_NAME=Kev
+      - ADMIN_PIN=474724      # your admin PIN; change it in the app under Me > Change PIN
+      - APP_PIN=2712          # only used to upgrade data from the old single-user version
+      - "APP_SECRET=${APP_SECRET:?Set APP_SECRET in .env}"
+      - TZ=Europe/London
+      - VAPID_SUBJECT=https://mytrack.marvelcloud.uk   # identifies this server to Apple/Google push services
+      - WATCHFILES_FORCE_POLLING=true                  # needed for live reload on Docker Desktop for Windows
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./data:/data
+      - ./app:/app
+    networks:
+      - mytrack-net
+
+networks:
+  mytrack-net:
+    name: mytrack_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.254.251.0/28
+          gateway: 10.254.251.1
