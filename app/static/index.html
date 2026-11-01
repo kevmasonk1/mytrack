@@ -76,6 +76,21 @@ svg{display:block}
 .macro{text-align:center;border-radius:var(--r-sm);padding:8px 4px;background:var(--bg)}
 .macro b{display:block;font-size:17px;font-weight:900}
 .macro span{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+/* macro split pie (share of calories from protein / carbs / fat) */
+:root{--m-pro:var(--mint);--m-carb:var(--blue);--m-fat:var(--sun)}
+html[data-theme="halloween"]{--m-fat:var(--blue3)}
+.mpie{display:flex;align-items:center;gap:16px;margin-top:8px;padding:12px 14px;border-radius:var(--r-sm);background:var(--bg)}
+.mpie svg{width:92px;height:92px;flex:none;overflow:visible}
+.mpie .seg-p{stroke:var(--m-pro)} .mpie .seg-c{stroke:var(--m-carb)} .mpie .seg-f{stroke:var(--m-fat)}
+.mpie .ctr{font-family:inherit;font-weight:900;fill:var(--navy)}
+.mpie .ctr2{font-family:inherit;font-weight:800;fill:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.mpie .lg{flex:1;min-width:0;display:grid;gap:7px;text-align:left}
+.mpie .cap{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.mpie .row{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:800;color:var(--ink)}
+.mpie .row i{width:10px;height:10px;border-radius:50%;flex:none}
+.mpie .row small{color:var(--muted);font-weight:700;font-size:12px}
+.mpie .row b{margin-left:auto;font-weight:900;font-variant-numeric:tabular-nums;color:var(--navy)}
+.mpie.empty .row b{color:var(--muted)}
 
 /* ---------- water ---------- */
 .water{display:flex;gap:5px;flex-wrap:wrap}
@@ -1236,6 +1251,31 @@ function ringSVG(frac, over, size=150, stroke=14){
     <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" style="stroke:${over ? 'var(--ring-over)' : 'url(#rg)'}" stroke-width="${stroke}" stroke-linecap="round"
       stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - f)}" transform="rotate(-90 ${size/2} ${size/2})" style="transition:stroke-dashoffset .6s"/></svg>`;
 }
+// Donut showing what share of today's calories came from protein, carbs and fat (4 / 4 / 9 kcal per gram)
+function macroPie(t){
+  const parts = [['p', 'Protein', t.protein, 4], ['c', 'Carbs', t.carbs, 4], ['f', 'Fat', t.fat, 9]]
+    .map(([k, name, g, kpg]) => ({ k, name, g: +g || 0, kcal: (+g || 0) * kpg }));
+  const total = parts.reduce((a, x) => a + x.kcal, 0);
+  const pct = parts.map(x => total ? Math.round(x.kcal / total * 100) : 0);
+  if (total) { const d = 100 - pct.reduce((a, b) => a + b, 0); pct[pct.indexOf(Math.max(...pct))] += d; }   // make them add up to 100
+  const top = pct.indexOf(Math.max(...pct));
+  const size = 92, stroke = 14, r = (size - stroke) / 2, c = 2 * Math.PI * r, gap = total && parts.filter(x => x.kcal).length > 1 ? 2 : 0;
+  let off = 0;
+  const arcs = total ? parts.map((x, i) => {
+    const len = x.kcal / total * c, a = `<circle class="seg-${x.k}" cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke-width="${stroke}"
+      stroke-dasharray="${Math.max(0, len - gap)} ${c}" stroke-dashoffset="${-off}" transform="rotate(-90 ${size/2} ${size/2})"/>`;
+    off += len; return x.kcal ? a : '';
+  }).join('') : '';
+  const label = total ? parts.map((x, i) => `${x.name} ${pct[i]}%`).join(', ') : 'No food logged yet';
+  return `<div class="mpie ${total ? '' : 'empty'}" role="img" aria-label="Calories by macro: ${label}">
+    <svg viewBox="0 0 ${size} ${size}" aria-hidden="true">
+      <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" style="stroke:var(--ring-track)" stroke-width="${stroke}"/>${arcs}
+      <text class="ctr" x="50%" y="49%" text-anchor="middle" font-size="19">${total ? pct[top] + '%' : '–'}</text>
+      <text class="ctr2" x="50%" y="65%" text-anchor="middle" font-size="9">${total ? parts[top].name : 'none yet'}</text></svg>
+    <div class="lg"><div class="cap">Calories by macro</div>
+      ${parts.map((x, i) => `<div class="row"><i style="background:var(--m-${['pro','carb','fat'][i]})"></i>${x.name} <small>${r0(x.g)}g</small><b>${total ? pct[i] + '%' : '–'}</b></div>`).join('')}
+    </div></div>`;
+}
 function renderToday(){
   const s = S.settings, dd = S.dayData, es = dd.entries;
   const tot = es.reduce((a, e) => { ['kcal','protein','carbs','fat','points'].forEach(k => a[k] += +e[k] || 0); return a; }, {kcal:0,protein:0,carbs:0,fat:0,points:0});
@@ -1266,7 +1306,7 @@ function renderToday(){
   const macros = s.show_macros ? `<div class="macros">
       <div class="macro"><b>${r0(tot.protein)}g</b><span>Protein</span></div>
       <div class="macro"><b>${r0(tot.carbs)}g</b><span>Carbs</span></div>
-      <div class="macro"><b>${r0(tot.fat)}g</b><span>Fat</span></div></div>` : '';
+      <div class="macro"><b>${r0(tot.fat)}g</b><span>Fat</span></div></div>${macroPie(tot)}` : '';
 
   const wt = s.water_target || 8, wn = dd.water || 0;
   const glasses = Array.from({length: Math.max(wt, wn)}, (_, i) => `<button class="glass ${i < wn ? 'full':''}" data-g="${i}"></button>`).join('') + `<button class="glass add" data-g="add">+</button>`;
