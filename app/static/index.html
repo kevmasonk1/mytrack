@@ -242,6 +242,18 @@ html[data-theme="halloween"]{--m-fat:var(--blue3)}
 .stat3 div{background:var(--bg);border-radius:var(--r-sm);padding:10px;text-align:center}
 .stat3 b{display:block;font-size:20px;font-weight:900}
 .stat3 span{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+/* weekly calories bar chart */
+.kbars{position:relative;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:130px;margin-top:30px}
+.kbars .kd{display:flex;justify-content:center;align-items:flex-end;height:100%;cursor:pointer}
+.kbars .kb{position:relative;width:100%;max-width:30px;border-radius:9px 9px 6px 6px;background:var(--blue3);min-height:4px}
+.kbars .kb.over{background:var(--sun)}
+.kbars .kb.today{background:var(--blue)}
+.kbars .kb.none{background:var(--line)}
+.kbars .kb span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:3px;padding:0 3px;border-radius:4px;background:var(--card);z-index:2;font-size:11px;font-weight:900;white-space:nowrap;color:var(--navy)}
+.kbars .tgt{position:absolute;left:-2px;right:-2px;border-top:2px dashed var(--muted);opacity:.75;pointer-events:none;z-index:1}
+.kdays{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:6px;text-align:center}
+.kdays small{font-size:11px;font-weight:900;color:var(--muted)}
+.legend .dash{width:14px;height:0;border-radius:0;border-top:2px dashed var(--muted);vertical-align:3px}
 .wl{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-top:1px solid var(--line);font-weight:800}
 .wl span{color:var(--muted);font-weight:700;font-size:14px}
 .wl .d{color:var(--mint);font-size:13px}
@@ -397,8 +409,8 @@ html[data-theme="halloween"] .toast{background:#24103A;color:#FFE2C2;box-shadow:
 html[data-theme="halloween"] .sheet{background:linear-gradient(180deg,#160C24,#0D0715 40%);box-shadow:0 -10px 40px rgba(0,0,0,.6),0 -1px 0 rgba(255,122,26,.3)}
 html[data-theme="halloween"] .grab{background:rgba(255,122,26,.35)}
 html[data-theme="halloween"] .scan-frame .laser{background:#39FF88;box-shadow:0 0 14px #39FF88}
-html[data-theme="halloween"] .wd .col.today{background:linear-gradient(#FFA54A,#FF5A00);box-shadow:0 0 14px rgba(255,90,0,.5)}
-html[data-theme="halloween"] .wd .col.over{background:linear-gradient(#FF4D73,#B0103A);box-shadow:0 0 14px rgba(255,20,70,.5)}
+html[data-theme="halloween"] .wd .col.today,html[data-theme="halloween"] .kbars .kb.today{background:linear-gradient(#FFA54A,#FF5A00);box-shadow:0 0 14px rgba(255,90,0,.5)}
+html[data-theme="halloween"] .wd .col.over,html[data-theme="halloween"] .kbars .kb.over{background:linear-gradient(#FF4D73,#B0103A);box-shadow:0 0 14px rgba(255,20,70,.5)}
 html[data-theme="halloween"] .badge{background:rgba(57,255,136,.12);color:var(--mint)}
 html[data-theme="halloween"] .tag{background:rgba(255,122,26,.15);color:#FFB347}
 html[data-theme="halloween"] .spin{border-color:rgba(255,255,255,.08);border-top-color:#FF7A1A}
@@ -504,8 +516,8 @@ html[data-theme="bonfire"] .add-row{border-color:rgba(255,190,80,.25)}
 html[data-theme="bonfire"] .toast{background:#141C40;color:#FFE7C2;box-shadow:0 0 0 1px rgba(255,190,80,.4),0 0 24px rgba(255,170,40,.35)}
 html[data-theme="bonfire"] .sheet{background:linear-gradient(180deg,#0F1636,#070B1A 40%);box-shadow:0 -10px 40px rgba(0,0,0,.6),0 -1px 0 rgba(255,190,80,.3)}
 html[data-theme="bonfire"] .grab{background:rgba(255,190,80,.35)}
-html[data-theme="bonfire"] .wd .col.today{background:linear-gradient(#FFD166,#FF8A00);box-shadow:0 0 14px rgba(255,170,40,.5)}
-html[data-theme="bonfire"] .wd .col.over{background:linear-gradient(#FF6B78,#C2102A);box-shadow:0 0 14px rgba(255,40,60,.5)}
+html[data-theme="bonfire"] .wd .col.today,html[data-theme="bonfire"] .kbars .kb.today{background:linear-gradient(#FFD166,#FF8A00);box-shadow:0 0 14px rgba(255,170,40,.5)}
+html[data-theme="bonfire"] .wd .col.over,html[data-theme="bonfire"] .kbars .kb.over{background:linear-gradient(#FF6B78,#C2102A);box-shadow:0 0 14px rgba(255,40,60,.5)}
 html[data-theme="bonfire"] .badge{background:rgba(61,255,143,.12);color:var(--mint)}
 html[data-theme="bonfire"] .tag{background:rgba(255,190,80,.15);color:#FFD166}
 html[data-theme="bonfire"] .spin{border-color:rgba(255,255,255,.08);border-top-color:#FFB020}
@@ -1655,6 +1667,26 @@ function openCreate(f, after, onDeleted){
 }
 
 /* ---------- WEEK ---------- */
+// Calories per day for the week, with the daily calorie target as a dashed line
+function kcalWeekCard(wk, s, t, kShort){
+  const target = +s.calorie_target || 0, days = wk.days;
+  const max = Math.max(target * 1.2, ...days.map(d => +d.kcal || 0), 1);
+  const logged = days.filter(d => d.kcal > 0), tot = logged.reduce((a, d) => a + d.kcal, 0);
+  const over = target ? logged.filter(d => d.kcal > target).length : 0;
+  const bars = days.map(d => {
+    const k = +d.kcal || 0, cls = !k ? 'none' : target && k > target ? 'over' : d.day === t ? 'today' : '';
+    return `<div class="kd" data-d="${d.day}"><div class="kb ${cls}" style="height:${Math.max(3, k / max * 100)}%">${k ? `<span>${kShort(k)}</span>` : ''}</div></div>`;
+  }).join('');
+  const labels = days.map(d => `<small>${parseISO(d.day).toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</small>`).join('');
+  return `<section class="card"><h3>Calories <span class="sub">${target ? `target ${fmt(target)} a day` : 'this week'}</span></h3>
+      <div class="stat3"><div><b>${tot ? kShort(tot) : '–'}</b><span>This week</span></div>
+      <div><b>${logged.length ? fmt(tot / logged.length) : '–'}</b><span>Avg kcal/day</span></div>
+      <div><b style="color:${over ? 'var(--coral)' : 'inherit'}">${target ? over : '–'}</b><span>Days over</span></div></div>
+      <div class="kbars" role="img" aria-label="Calories each day this week${target ? ', target ' + fmt(target) : ''}">${bars}${target ? `<div class="tgt" style="bottom:${target / max * 100}%"></div>` : ''}</div>
+      <div class="kdays">${labels}</div>
+      <div class="legend"><span><i style="background:var(--blue3)"></i>Within target</span><span><i style="background:var(--sun)"></i>Over target</span><span><i style="background:var(--blue)"></i>Today</span>${target ? '<span><i class="dash"></i>Daily target</span>' : ''}</div>
+    </section>`;
+}
 async function renderWeekTab(){
   $('#view').innerHTML = '<div class="spin"></div>';
   const wk = await api('/week/' + S.day); S.week = wk;
@@ -1683,8 +1715,9 @@ async function renderWeekTab(){
       <div class="legend"><span><i style="background:var(--blue3)"></i>Within daily</span><span><i style="background:var(--sun)"></i>Over allowance</span><span><i style="background:var(--blue)"></i>Today</span>${calDays ? '<span><i style="background:var(--mint)"></i>Calorie day</span>' : ''}</div>
       <p class="hint">${s.daily_points} sins a day (1 sin = ${kpp()} kcal).${s.carry_over !== false ? ' Sins you don\'t use roll over to the next day.' : ''}${(+s.weekly_points||0) > 0 ? ` Plus ${s.weekly_points} bonus sins for the week.` : ''} Everything resets every ${s.week_start == 0 ? 'Sunday' : 'Monday'}.${calDays ? ` Calorie days count against ${fmt(s.calorie_target)} kcal instead and don't use any sins.` : ''}</p>
     </section>
+    ${kcalWeekCard(wk, s, t, kShort)}
     <div class="btn-row"><button class="btn sec" id="wPrev">‹ Previous week</button><button class="btn sec" id="wNext">Next week ›</button></div>`;
-  $('#view').querySelectorAll('.wd').forEach(d => d.onclick = () => { S.day = d.dataset.d; setTab('today'); });
+  $('#view').querySelectorAll('.wd, .kd').forEach(d => d.onclick = () => { S.day = d.dataset.d; setTab('today'); });
   $('#wPrev').onclick = () => { S.day = addDays(S.day, -7); renderWeekTab(); };
   $('#wNext').onclick = () => { S.day = addDays(S.day, 7); renderWeekTab(); };
 }
