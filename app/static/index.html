@@ -1412,6 +1412,7 @@ async function drawWithings(){
 
 /* ---------- body fat (from Withings or any scale that reports it) ---------- */
 let FAT_RANGE = 90;
+let WT_RANGE = 90;   // weight chart period on the Progress tab (0 = all)
 function fatCard(ws){
   const all = ws.filter(w => w.fat_pct);
   if (!all.length) return '';
@@ -1432,6 +1433,8 @@ function fatCard(ws){
     <p class="hint">From your scale's readings. Body fat % naturally bounces around by a percent or two day to day — the trend over weeks is what counts.</p>
   </section>`;
 }
+document.addEventListener('click', e => { const b = e.target.closest('#wtRange [data-r]'); if (!b) return;
+  WT_RANGE = +b.dataset.r; renderProgress(true); });
 document.addEventListener('click', e => { const b = e.target.closest('#fatRange [data-r]'); if (!b) return;
   FAT_RANGE = +b.dataset.r; api('/weights').then(ws => { const c = $('#fatCard'); if (c) c.outerHTML = fatCard(ws); }); });
 
@@ -2037,10 +2040,17 @@ function weightChart(ws, goal, o = {}){
     <text x="${P.l}" y="${H-4}" font-size="12" font-weight="800" style="fill:var(--muted)">${fd(ws[0].day)}</text>
     <text x="${W-P.r}" y="${H-4}" text-anchor="end" font-size="12" font-weight="800" style="fill:var(--muted)">${fd(ws.at(-1).day)}</text></svg>`;
 }
-async function renderProgress(){
-  $('#view').innerHTML = '<div class="spin"></div>';
-  const [ws, hist] = await Promise.all([api('/weights'), api('/history?days=30')]);
-  const s = S.settings, last = ws.at(-1), first = ws[0];
+async function renderProgress(keepData){
+  if (!keepData || !S.progData) {
+    $('#view').innerHTML = '<div class="spin"></div>';
+    S.progData = await Promise.all([api('/weights'), api('/history?days=30')]);
+  }
+  const [ws, hist] = S.progData;
+  const s = S.settings, last = ws.at(-1);
+  // weigh-ins in the chosen period (falls back to everything if the period has fewer than 2)
+  const wCut = WT_RANGE ? addDays(TODAY(), -WT_RANGE) : '0000';
+  const inRange = ws.filter(w => w.day >= wCut), wr = inRange.length >= 2 ? inRange : ws, first = wr[0];
+  const fdate = x => parseISO(x).toLocaleDateString('en-GB', {day:'numeric', month:'short'});
   const lost = first && last ? first.kg - last.kg : 0;
   const toGo = s.goal_weight_kg && last ? last.kg - s.goal_weight_kg : null;
   const avgK = hist.length ? hist.reduce((a, h) => a + h.kcal, 0) / hist.length : 0;
@@ -2051,10 +2061,11 @@ async function renderProgress(){
   $('#view').innerHTML = `
     ${badgesCard()}
     <section class="card"><h3>Weight ${last ? `<span class="sub">${showWeight(last.kg)}</span>` : ''}</h3>
-      <div class="stat3"><div><b style="color:${lost >= 0 ? 'var(--mint)' : 'var(--coral)'}">${first ? (lost >= 0 ? '−' : '+') + diffWeight(lost) : '–'}</b><span>${lost >= 0 ? 'Lost' : 'Gained'}</span></div>
+      <div class="stat3"><div><b style="color:${lost >= 0 ? 'var(--mint)' : 'var(--coral)'}">${first && wr.length > 1 ? (Math.abs(lost) < 0.05 ? '–' : (lost >= 0 ? '−' : '+') + diffWeight(lost)) : '–'}</b><span>${first ? 'Since ' + fdate(first.day) : 'Lost'}</span></div>
         <div><b>${toGo != null ? (toGo > 0 ? diffWeight(toGo) : '🎉') : '–'}</b><span>To goal</span></div>
-        <div><b>${ws.length}</b><span>Weigh-ins</span></div></div>
-      <div style="margin-top:16px">${weightChart(ws, s.goal_weight_kg)}</div>
+        <div><b>${wr.length}</b><span>Weigh-ins</span></div></div>
+      ${ws.length > 1 ? `<div class="seg" id="wtRange" style="box-shadow:none;background:var(--bg);margin-top:14px">${[[30,'30 days'],[90,'90 days'],[365,'1 year'],[0,'All']].map(([v,l]) => `<button data-r="${v}" class="${WT_RANGE === v ? 'on' : ''}">${l}</button>`).join('')}</div>` : ''}
+      <div style="margin-top:12px">${weightChart(wr, s.goal_weight_kg)}</div>
       <div style="display:flex;gap:8px;margin-top:14px;align-items:center">${wIn}<button class="step" id="wAdd" style="width:auto;padding:0 18px;font-size:16px">Log</button></div>
       <p class="hint">Logs against ${S.day === TODAY() ? 'today' : parseISO(S.day).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}. Tap an entry to remove it.</p>
       <div style="margin-top:6px">${ws.slice().reverse().slice(0, 12).map((w, i, arr) => {
