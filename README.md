@@ -56,3 +56,18 @@ Anything over the daily allowance comes out of the weekly points, which reset on
 
 `./app` is mounted into the container and reloads automatically when files change, so app updates go live
 without a rebuild. Only a change to `requirements.txt` or the `Dockerfile` needs `docker compose up -d --build`.
+
+## Supplements (merged from Stack)
+
+* Per person, **off by default**. Turn it on for someone in **Me → Admin → Supplements → Supplement products → Who has Supplements**.
+  People with it off see no change at all: no Supps tab, no extra cards, no reminders.
+* Supps tab: daily checklist by time slot (tap to tick, Log all, swap training/rest day), Breakdown (every active
+  ingredient vs daily upper limits), Week (streak, 5-week heatmap, most missed). **Edit my plan** for slots, items,
+  phone reminders, protein target and training days.
+* Product library (admins with Supplements on): barcode lookup via Open Food Facts (doesn't touch the food list),
+  ingredient table per capsule/scoop/shot, optional calories. Items marked "count calories" add a diary entry when ticked.
+* Code: `app/supps.py` (API + reminders), `app/static/supps.js` (UI), `app/supps_import.py` (one-off Stack import).
+  Data only in `supp_*` tables.
+* Stack import runs once at start-up if `data/stack-import/schedule.json` + `db.json` exist (backs up to
+  `data/mytrack-before-supps-*.db` first). Re-running it does nothing once done.
+* To undo: restore `.backup-before-supps/main.py` and `index.html` into `app/` — the `supp_*` tables are then simply unused.

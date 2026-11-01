@@ -1,0 +1,11 @@
+--- app/main.py
++++ app/main.py
+@@ -1388,7 +1447,7 @@ def admin_delete_user(request: Request, uid: int):
+             raise HTTPException(404, "No such user")
+         if u["is_admin"] and active_admins(c, excluding=uid) == 0:
+             raise HTTPException(400, "There must always be at least one admin")
+-        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs"):
++        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs", "user_day_mode"):
+             c.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
+         c.execute("UPDATE foods SET created_by=NULL WHERE created_by=?", (uid,))
+         c.execute("DELETE FROM users WHERE id=?", (uid,))

@@ -57,8 +57,9 @@ DEFAULT_SETTINGS = {
     "goal_weight_kg": None,
     "water_target": 8,
     "show_macros": True,
-    "track_mode": "points",   # points | calories
+    "track_mode": "points",   # default for each day: points | calories (any day can be switched on the Today screen)
 }
+MODES = ("points", "calories")
 
 # ---------------------------------------------------------------- database
 SCHEMA = """
@@ -119,9 +120,14 @@ CREATE TABLE IF NOT EXISTS push_subs (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, endpoint TEXT UNIQUE, p256dh TEXT, auth TEXT,
   ua TEXT DEFAULT '', created REAL DEFAULT 0, last_ok REAL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS withings (
+  user_id INTEGER PRIMARY KEY, w_userid TEXT, access_token TEXT, refresh_token TEXT, expires_at REAL,
+  scope TEXT, last_update INTEGER DEFAULT 0, last_sync REAL DEFAULT 0, last_error TEXT DEFAULT '', imported INTEGER DEFAULT 0, connected REAL
+);
 CREATE TABLE IF NOT EXISTS user_visits (user_id INTEGER, day TEXT, PRIMARY KEY (user_id, day));
 CREATE TABLE IF NOT EXISTS user_badges (user_id INTEGER, badge TEXT, earned_at REAL, seen INTEGER DEFAULT 0, PRIMARY KEY (user_id, badge));
 CREATE TABLE IF NOT EXISTS user_water (user_id INTEGER, day TEXT, glasses INTEGER DEFAULT 0, PRIMARY KEY (user_id, day));
+CREATE TABLE IF NOT EXISTS user_day_mode (user_id INTEGER, day TEXT, mode TEXT NOT NULL, PRIMARY KEY (user_id, day));
 """
 
 
@@ -209,6 +215,10 @@ def migrate():
         if "created_by" not in cols(c, "foods"):
             c.execute("ALTER TABLE foods ADD COLUMN created_by INTEGER")
         c.execute("CREATE INDEX IF NOT EXISTS idx_entries_user_day ON entries(user_id, day)")
+        if "source" not in cols(c, "user_weights"):
+            c.execute("ALTER TABLE user_weights ADD COLUMN source TEXT DEFAULT 'manual'")
+            c.execute("ALTER TABLE user_weights ADD COLUMN fat_pct REAL")
+            c.execute("ALTER TABLE user_weights ADD COLUMN measured_at REAL")
 
         # Bootstrap the admin account
         if not c.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone():
@@ -258,6 +268,16 @@ def get_settings(uid: int):
     return {**DEFAULT_SETTINGS, **stored, "name": u["name"] if u else ""}
 
 
+def day_modes(c, uid: int, s: dict, start: str, end: str) -> dict:
+    """{day: mode} for days with an explicit choice; anything missing uses s['track_mode']."""
+    return {r["day"]: r["mode"] for r in c.execute(
+        "SELECT day, mode FROM user_day_mode WHERE user_id=? AND day BETWEEN ? AND ?", (uid, start, end))}
+
+
+def default_mode(s: dict) -> str:
+    return s.get("track_mode") if s.get("track_mode") in MODES else "points"
+
+
 # ---------------------------------------------------------------- auth
 def sign(value: str) -> str:
     return value + "." + hmac.new(SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
@@ -288,7 +308,7 @@ def public_user(u):
 
 
 app = FastAPI(title="MyTrack", docs_url=None, redoc_url=None)
-OPEN_PATHS = {"/api/login", "/api/auth", "/api/logout"}
+OPEN_PATHS = {"/api/login", "/api/auth", "/api/logout", "/api/withings/callback"}
 
 
 @app.middleware("http")
@@ -363,8 +383,14 @@ def read_settings(request: Request):
 @app.put("/api/settings")
 def write_settings(request: Request, body: dict):
     uid = uid_of(request)
-    before = get_settings(uid)["kcal_per_point"]
+    old = get_settings(uid)
+    before = old["kcal_per_point"]
     with db() as c:
+        if body.get("track_mode") in MODES and body["track_mode"] != default_mode(old):
+            # Changing the default only affects today onwards: pin earlier logged days to the mode they were tracked in.
+            c.execute("INSERT OR IGNORE INTO user_day_mode(user_id, day, mode) "
+                      "SELECT DISTINCT user_id, day, ? FROM entries WHERE user_id=? AND day<?",
+                      (default_mode(old), uid, date.today().isoformat()))
         for k, v in body.items():
             if k in DEFAULT_SETTINGS:
                 c.execute("INSERT OR REPLACE INTO user_settings VALUES (?,?,?)", (uid, k, json.dumps(v)))
@@ -436,7 +462,28 @@ def get_day(request: Request, day: str):
         entries = rows(c.execute("SELECT * FROM entries WHERE user_id=? AND day=? ORDER BY created", (uid, day)))
         w = c.execute("SELECT glasses FROM user_water WHERE user_id=? AND day=?", (uid, day)).fetchone()
         wt = c.execute("SELECT kg FROM user_weights WHERE user_id=? AND day=?", (uid, day)).fetchone()
-    return {"day": day, "entries": entries, "water": w["glasses"] if w else 0, "weight_kg": wt["kg"] if wt else None}
+        s = get_settings(uid)
+        mode = day_modes(c, uid, s, day, day).get(day, default_mode(s))
+    return {"day": day, "entries": entries, "water": w["glasses"] if w else 0, "weight_kg": wt["kg"] if wt else None,
+            "mode": mode}
+
+
+class DayMode(BaseModel):
+    mode: str
+
+
+@app.put("/api/day/{day}/mode")
+def set_day_mode(request: Request, day: str, b: DayMode):
+    """Switch one day between counting sins and counting calories."""
+    if b.mode not in MODES:
+        raise HTTPException(400, "mode must be 'points' or 'calories'")
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(400, "Bad date")
+    with db() as c:
+        c.execute("INSERT OR REPLACE INTO user_day_mode(user_id, day, mode) VALUES (?,?,?)", (uid_of(request), day, b.mode))
+    return {"day": day, "mode": b.mode}
 
 
 @app.get("/api/week/{day}")
@@ -451,11 +498,13 @@ def get_week(request: Request, day: str):
         totals = {r["day"]: dict(r) for r in c.execute(
             "SELECT day, SUM(kcal) kcal, SUM(points) points, SUM(protein) protein, SUM(carbs) carbs, SUM(fat) fat "
             "FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day", (uid, days[0], days[-1]))}
+        modes = day_modes(c, uid, s, days[0], days[-1])
     out = []
     for dd in days:
         t = totals.get(dd, {})
         out.append({"day": dd, "kcal": t.get("kcal") or 0, "points": t.get("points") or 0,
-                    "protein": t.get("protein") or 0, "carbs": t.get("carbs") or 0, "fat": t.get("fat") or 0})
+                    "protein": t.get("protein") or 0, "carbs": t.get("carbs") or 0, "fat": t.get("fat") or 0,
+                    "mode": modes.get(dd, default_mode(s))})
     return {"start": days[0], "days": out}
 
 
@@ -530,13 +579,13 @@ class Weight(BaseModel):
 @app.get("/api/weights")
 def list_weights(request: Request):
     with db() as c:
-        return rows(c.execute("SELECT day, kg FROM user_weights WHERE user_id=? ORDER BY day", (uid_of(request),)))
+        return rows(c.execute("SELECT day, kg, source, fat_pct FROM user_weights WHERE user_id=? ORDER BY day", (uid_of(request),)))
 
 
 @app.post("/api/weights")
 def add_weight(request: Request, w: Weight):
     with db() as c:
-        c.execute("INSERT OR REPLACE INTO user_weights(user_id, day, kg) VALUES (?,?,?)", (uid_of(request), w.day, w.kg))
+        c.execute("INSERT OR REPLACE INTO user_weights(user_id, day, kg, source) VALUES (?,?,?,'manual')", (uid_of(request), w.day, w.kg))
     return {"ok": True}
 
 
@@ -835,13 +884,17 @@ def _week_start(d: date, ws: int) -> date:
 
 
 def day_statuses(c, uid, s, start: date, end: date):
-    """Per-day sins / on-track status, using the same allowance + carry-over rules as the app."""
+    """Per-day sins / on-track status, using the same allowance + carry-over rules as the app.
+    Calorie days sit outside the sins budget: they don't use sins, earn carry-over or touch the weekly
+    bonus (carry-over just passes through to the next sins day). They're on track when under the calorie target."""
     ws = int(s["week_start"]); a = _week_start(start, ws)
     daily, weekly = int(s["daily_points"] or 0), int(s["weekly_points"] or 0)
     carry_on, sd = s.get("carry_over", True) is not False, s.get("start_date")
-    tot = {r["day"]: (r["p"] or 0, r["n"]) for r in c.execute(
-        "SELECT day, SUM(points) p, COUNT(*) n FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day",
+    tot = {r["day"]: (r["p"] or 0, r["n"], r["k"] or 0) for r in c.execute(
+        "SELECT day, SUM(points) p, COUNT(*) n, SUM(kcal) k FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day",
         (uid, a.isoformat(), end.isoformat()))}
+    modes, dmode = day_modes(c, uid, s, a.isoformat(), end.isoformat()), default_mode(s)
+    ktarget = float(s.get("calorie_target") or 0)
     wt = int(s.get("water_target") or 8)
     water = {r["day"]: r["glasses"] for r in c.execute(
         "SELECT day, glasses FROM user_water WHERE user_id=? AND day BETWEEN ? AND ?", (uid, a.isoformat(), end.isoformat()))}
@@ -849,11 +902,19 @@ def day_statuses(c, uid, s, start: date, end: date):
     while d <= end:
         if d == _week_start(d, ws):
             carry, bonus = 0, weekly
-        iso = d.isoformat(); used, n = tot.get(iso, (0, 0))
+        iso = d.isoformat(); used, n, kcal = tot.get(iso, (0, 0, 0))
         counts = not sd or iso >= sd
+        mode = modes.get(iso, dmode)
+        if mode == "calories":
+            out[iso] = {"used": used, "n": n, "avail": 0, "kcal": kcal, "kcal_target": ktarget, "mode": mode,
+                        "on_track": bool(counts and n >= 2 and kcal <= ktarget),
+                        "water_hit": water.get(iso, 0) >= wt, "counts": counts}
+            d += timedelta(days=1)
+            continue
         avail = daily + (carry if counts else 0); left = avail - used
         bu = min(max(0, -left), bonus) if counts else 0; bonus -= bu
-        out[iso] = {"used": used, "n": n, "avail": avail, "on_track": bool(counts and n >= 2 and left + bu >= 0),
+        out[iso] = {"used": used, "n": n, "avail": avail, "kcal": kcal, "kcal_target": ktarget, "mode": mode,
+                    "on_track": bool(counts and n >= 2 and left + bu >= 0),
                     "water_hit": water.get(iso, 0) >= wt, "counts": counts}
         if counts:
             carry = max(0, left) if carry_on else 0
@@ -944,7 +1005,8 @@ def game_state(c, uid, today: date):
     badges = {r["badge"]: dict(r) for r in c.execute("SELECT * FROM user_badges WHERE user_id=?", (uid,))}
 
     # today's progress
-    t = st.get(today.isoformat(), {"used": 0, "n": 0, "avail": 0, "on_track": False, "water_hit": False})
+    t = st.get(today.isoformat(), {"used": 0, "n": 0, "avail": 0, "kcal": 0, "kcal_target": 0, "mode": default_mode(s),
+                                   "on_track": False, "water_hit": False})
     meals = {r[0] for r in c.execute("SELECT DISTINCT meal FROM entries WHERE user_id=? AND day=?", (uid, today.isoformat()))}
     y = st.get((today - timedelta(days=1)).isoformat(), {})
 
@@ -962,7 +1024,8 @@ def game_state(c, uid, today: date):
         if last_month["achieved"] and seen.get("month") != last_month["month"]:
             events.append({"type": "month", "key": "month", "value": last_month["month"], **{k: last_month[k] for k in ("on_track_days", "goal", "month")}})
         if {"breakfast", "lunch", "dinner"} <= meals and t["on_track"] and seen.get("daygoal") != tiso:
-            events.append({"type": "daygoal", "key": "daygoal", "value": tiso, "used": t["used"], "avail": t["avail"]})
+            events.append({"type": "daygoal", "key": "daygoal", "value": tiso, "used": t["used"], "avail": t["avail"],
+                           "mode": t["mode"], "kcal": round(t["kcal"]), "kcal_target": round(t["kcal_target"])})
         if t["water_hit"] and seen.get("water") != tiso:
             events.append({"type": "water", "key": "water", "value": tiso, "target": int(s.get("water_target") or 8)})
         for b in BADGES:
@@ -975,7 +1038,7 @@ def game_state(c, uid, today: date):
     return {
         "streak": streak, "best_streak": best, "track_streak": track_streak, "next_milestone": nxt,
         "today": {"used": t["used"], "avail": t["avail"], "entries": t["n"], "on_track": t["on_track"], "meals": sorted(meals),
-                  "water_hit": t["water_hit"]},
+                  "water_hit": t["water_hit"], "mode": t["mode"], "kcal": round(t["kcal"]), "kcal_target": round(t["kcal_target"])},
         "week": week, "month": month, "quote": random.choice(QUOTES),
         "badges": [{**BADGE_INFO[b[0]], "earned": b[0] in badges, "earned_at": badges.get(b[0], {}).get("earned_at")} for b in BADGES],
         "events": events,
@@ -1146,7 +1209,10 @@ def build_notification(c, uid: int, kind: str, now: datetime):
         g = game_state(c, uid, today)   # read-only use: tells us about unseen week/month wins
         types = {e["type"]: e for e in g["events"]}
         carry = t["avail"] - int(s["daily_points"] or 0)
-        sins = f"{t['avail']} sins ready today" + (f" (incl. {carry} carried over)" if carry > 0 else "")
+        if t["mode"] == "calories":
+            sins = f"Calorie day — {round(t['kcal_target']):,} kcal to play with"
+        else:
+            sins = f"{t['avail']} sins ready today" + (f" (incl. {carry} carried over)" if carry > 0 else "")
         if "month" in types:
             e = types["month"]
             return {"title": "👑 Month master!", "body": f"{e['on_track_days']} on-track days last month. {sins} — let's go again.", "tag": "morning"}
@@ -1217,6 +1283,183 @@ async def scheduler():
 async def _start_scheduler():
     asyncio.create_task(scheduler())
 
+
+# ---------------------------------------------------------------- Withings weigh-in sync
+from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
+
+WITHINGS_ID = os.environ.get("WITHINGS_CLIENT_ID", "").strip()
+WITHINGS_SECRET = os.environ.get("WITHINGS_CLIENT_SECRET", "").strip()
+WITHINGS_REDIRECT = os.environ.get("WITHINGS_REDIRECT_URI", "").strip()
+WITHINGS_AUTH = os.environ.get("WITHINGS_AUTH_BASE", "https://account.withings.com").rstrip("/")
+WITHINGS_API = os.environ.get("WITHINGS_API_BASE", "https://wbsapi.withings.net").rstrip("/")
+WITHINGS_EVERY = 30 * 60
+
+
+def withings_ready():
+    return bool(WITHINGS_ID and WITHINGS_SECRET and WITHINGS_REDIRECT)
+
+
+def _wpost(path: str, data: dict, token: Optional[str] = None) -> dict:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    r = httpx.post(f"{WITHINGS_API}{path}", data=data, headers=headers, timeout=20)
+    r.raise_for_status()
+    j = r.json()
+    if j.get("status") != 0:
+        raise RuntimeError(f"Withings status {j.get('status')}: {j.get('error', '')}")
+    return j.get("body") or {}
+
+
+def _save_tokens(c, uid, body):
+    c.execute("""INSERT INTO withings(user_id, w_userid, access_token, refresh_token, expires_at, scope, connected)
+                 VALUES (?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET w_userid=excluded.w_userid,
+                 access_token=excluded.access_token, refresh_token=excluded.refresh_token, expires_at=excluded.expires_at,
+                 scope=excluded.scope, last_error=''""",
+              (uid, str(body.get("userid", "")), body["access_token"], body["refresh_token"],
+               time.time() + int(body.get("expires_in", 10800)), body.get("scope", ""), time.time()))
+
+
+def _access_token(uid) -> str:
+    with db() as c:
+        w = c.execute("SELECT * FROM withings WHERE user_id=?", (uid,)).fetchone()
+    if not w:
+        raise RuntimeError("not connected")
+    if w["expires_at"] - 120 > time.time():
+        return w["access_token"]
+    body = _wpost("/v2/oauth2", {"action": "requesttoken", "grant_type": "refresh_token", "client_id": WITHINGS_ID,
+                                 "client_secret": WITHINGS_SECRET, "refresh_token": w["refresh_token"]})
+    with db() as c:
+        _save_tokens(c, uid, body)   # Withings rotates the refresh token every time
+    return body["access_token"]
+
+
+def withings_sync(uid: int) -> dict:
+    """Pull new weigh-ins (and body fat %) since the last sync. Latest reading per day wins;
+    weigh-ins typed in by hand are never overwritten."""
+    try:
+        token = _access_token(uid)
+        with db() as c:
+            last = c.execute("SELECT last_update FROM withings WHERE user_id=?", (uid,)).fetchone()[0] or 0
+        groups, offset, updatetime = [], None, int(time.time())
+        while True:
+            data = {"action": "getmeas", "meastypes": "1,6", "category": "1", "lastupdate": str(last)}
+            if offset:
+                data["offset"] = str(offset)
+            body = _wpost("/measure", data, token)
+            groups += body.get("measuregrps", [])
+            updatetime = int(body.get("updatetime") or updatetime)
+            if not body.get("more"):
+                break
+            offset = body.get("offset")
+        added = 0
+        with db() as c:
+            for g in sorted(groups, key=lambda g: g.get("date", 0)):
+                vals = {m["type"]: m["value"] * (10 ** m["unit"]) for m in g.get("measures", [])}
+                if 1 not in vals:
+                    continue
+                ts = g["date"]; day = datetime.fromtimestamp(ts, TZ).date().isoformat()
+                ex = c.execute("SELECT source, measured_at FROM user_weights WHERE user_id=? AND day=?", (uid, day)).fetchone()
+                if ex and (ex["source"] or "manual") == "manual":
+                    continue
+                if ex and (ex["measured_at"] or 0) > ts:
+                    continue
+                c.execute("INSERT OR REPLACE INTO user_weights(user_id, day, kg, source, fat_pct, measured_at) VALUES (?,?,?,?,?,?)",
+                          (uid, day, round(vals[1], 2), "withings", round(vals[6], 1) if 6 in vals else None, ts))
+                added += 1
+            c.execute("UPDATE withings SET last_update=?, last_sync=?, last_error='', imported=imported+? WHERE user_id=?",
+                      (updatetime, time.time(), added, uid))
+        return {"ok": True, "added": added}
+    except Exception as ex:  # noqa: BLE001
+        msg = str(ex)[:200]
+        if "status 401" in msg or "status 601" in msg or "invalid_grant" in msg:
+            msg = "Withings needs reconnecting — tap Disconnect, then Connect again."
+        with db() as c:
+            c.execute("UPDATE withings SET last_error=?, last_sync=? WHERE user_id=?", (msg, time.time(), uid))
+        log.warning("withings sync for user %s failed: %s", uid, msg)
+        return {"ok": False, "error": msg}
+
+
+@app.get("/api/withings/status")
+def withings_status(request: Request):
+    with db() as c:
+        w = c.execute("SELECT last_sync, last_error, imported, connected FROM withings WHERE user_id=?", (uid_of(request),)).fetchone()
+    return {"configured": withings_ready(), "connected": bool(w), **(dict(w) if w else {})}
+
+
+@app.get("/api/withings/connect")
+def withings_connect(request: Request):
+    if not withings_ready():
+        raise HTTPException(400, "Withings isn't set up on this server yet")
+    state = sign(f"w:{uid_of(request)}:{int(time.time())}")
+    q = urlencode({"response_type": "code", "client_id": WITHINGS_ID, "scope": "user.metrics",
+                   "redirect_uri": WITHINGS_REDIRECT, "state": state})
+    return {"url": f"{WITHINGS_AUTH}/oauth2_user/authorize2?{q}"}
+
+
+@app.get("/api/withings/callback")
+async def withings_callback(code: str = "", state: str = "", error: str = ""):
+    """Withings sends the browser back here. The signed, 15-minute `state` identifies the person."""
+    if error or not code:
+        return RedirectResponse("/?tab=settings&withings=cancelled")
+    try:
+        value, _ = state.rsplit(".", 1)
+        tag, uid, ts = value.split(":")
+        if tag != "w" or not hmac.compare_digest(sign(value), state) or time.time() - int(ts) > 900:
+            raise ValueError
+        uid = int(uid)
+    except ValueError:
+        return RedirectResponse("/?tab=settings&withings=error")
+    try:
+        body = await asyncio.to_thread(_wpost, "/v2/oauth2", {"action": "requesttoken", "grant_type": "authorization_code",
+                                                              "client_id": WITHINGS_ID, "client_secret": WITHINGS_SECRET,
+                                                              "code": code, "redirect_uri": WITHINGS_REDIRECT})
+        with db() as c:
+            c.execute("DELETE FROM withings WHERE user_id=?", (uid,))
+            _save_tokens(c, uid, body)
+    except Exception as ex:  # noqa: BLE001
+        log.warning("withings token exchange failed: %s", ex)
+        return RedirectResponse("/?tab=settings&withings=error")
+    await asyncio.to_thread(withings_sync, uid)   # pull history straight away
+    return RedirectResponse("/?tab=settings&withings=connected")
+
+
+@app.post("/api/withings/sync")
+async def withings_sync_now(request: Request, auto: bool = False):
+    uid = uid_of(request)
+    with db() as c:
+        w = c.execute("SELECT last_sync FROM withings WHERE user_id=?", (uid,)).fetchone()
+    if not w:
+        raise HTTPException(400, "Withings isn't connected")
+    if auto and time.time() - (w["last_sync"] or 0) < 300:     # app-open syncs at most every 5 min
+        return {"ok": True, "added": 0, "skipped": True}
+    return await asyncio.to_thread(withings_sync, uid)
+
+
+@app.delete("/api/withings")
+def withings_disconnect(request: Request):
+    with db() as c:
+        c.execute("DELETE FROM withings WHERE user_id=?", (uid_of(request),))
+    return {"ok": True}
+
+
+async def withings_loop():
+    await asyncio.sleep(20)
+    while True:
+        try:
+            if withings_ready():
+                with db() as c:
+                    due = [r[0] for r in c.execute("SELECT user_id FROM withings WHERE last_sync < ?", (time.time() - WITHINGS_EVERY,))]
+                for uid in due:
+                    await asyncio.to_thread(withings_sync, uid)
+        except Exception:  # noqa: BLE001
+            log.exception("withings loop error")
+        await asyncio.sleep(120)
+
+
+@app.on_event("startup")
+async def _start_withings():
+    asyncio.create_task(withings_loop())
+
 # ---------------------------------------------------------------- personal export
 @app.get("/api/export")
 def export(request: Request):
@@ -1226,6 +1469,7 @@ def export(request: Request):
             "entries": rows(c.execute("SELECT * FROM entries WHERE user_id=?", (uid,))),
             "weights": rows(c.execute("SELECT day, kg FROM user_weights WHERE user_id=?", (uid,))),
             "water": rows(c.execute("SELECT day, glasses FROM user_water WHERE user_id=?", (uid,))),
+            "day_modes": rows(c.execute("SELECT day, mode FROM user_day_mode WHERE user_id=?", (uid,))),
             "favourites": rows(c.execute(FOOD_SELECT + " WHERE uf.favourite=1", (uid,))),
         }
     data["settings"] = get_settings(uid)
@@ -1329,7 +1573,7 @@ def admin_delete_user(request: Request, uid: int):
             raise HTTPException(404, "No such user")
         if u["is_admin"] and active_admins(c, excluding=uid) == 0:
             raise HTTPException(400, "There must always be at least one admin")
-        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs"):
+        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs", "withings", "user_day_mode") + supps.USER_TABLES:
             c.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
         c.execute("UPDATE foods SET created_by=NULL WHERE created_by=?", (uid,))
         c.execute("DELETE FROM users WHERE id=?", (uid,))
@@ -1369,6 +1613,27 @@ def admin_backup():
 @app.get("/healthz")
 def health():
     return {"ok": True}
+
+
+# ---------------------------------------------------------------- supplements (per-person, off by default)
+import supps  # noqa: E402
+
+
+def _supp_points(c, uid, kcal):
+    r = c.execute("SELECT value FROM user_settings WHERE user_id=? AND key='kcal_per_point'", (uid,)).fetchone()
+    k = max(1.0, float(json.loads(r[0])) if r else float(DEFAULT_SETTINGS["kcal_per_point"]))
+    return round_half_up((kcal or 0) / k)
+
+
+supps.register(app, db=db, rows=rows, insert_entry=insert_entry, push_user=push_user, tz=TZ, log=log,
+               points_for=_supp_points, off_get=off_get, off_fields=OFF_FIELDS)
+
+# One-off: if Stack's files are dropped into data/stack-import, bring them across once (backs up first).
+import supps_import  # noqa: E402
+try:
+    supps_import.auto_import(DB_PATH, DATA_DIR / "stack-import", os.environ.get("SUPPS_IMPORT_USER", ADMIN_NAME), log=log.warning)
+except Exception:  # noqa: BLE001
+    log.exception("Stack import failed — nothing was changed by it")
 
 
 # ---------------------------------------------------------------- static

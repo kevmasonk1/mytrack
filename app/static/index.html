@@ -130,6 +130,9 @@ svg{display:block}
 .seg::-webkit-scrollbar{display:none}
 .seg button{flex:1;padding:9px 6px;border-radius:999px;font-weight:800;font-size:13.5px;color:var(--muted);white-space:nowrap}
 .seg button.on{background:var(--blue);color:#fff}
+.mode-seg{background:var(--sky);box-shadow:none;margin-bottom:14px}
+.mode-seg button{padding:8px 6px;font-size:13px}
+.kcal-line.paused span,.kcal-line.paused b{color:var(--muted)}
 .meal-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .meal-pick button{padding:7px 2px;border-radius:999px;background:#fff;font-weight:800;font-size:13px;color:var(--muted);border:2px solid transparent;white-space:nowrap}
 .meal-pick button.on{border-color:var(--blue);color:var(--blue)}
@@ -214,6 +217,7 @@ svg{display:block}
 .wd .col{width:100%;max-width:30px;border-radius:9px 9px 6px 6px;background:var(--blue3);position:relative;min-height:4px}
 .wd .col.over{background:var(--sun)}
 .wd .col.today{background:var(--blue)}
+.wd .col.cal{background:var(--mint)}
 .wd .col.empty{background:var(--line)}
 .wd small{font-size:11px;font-weight:900;color:var(--muted)}
 .wd .num{font-size:12px;font-weight:900}
@@ -684,7 +688,8 @@ function points(n, zero){
   return Math.max(0, Math.round((n.kcal || 0) / kpp()));
 }
 /* Daily allowance with carry-over: unused points roll into the next day, reset each week.
-   Optional weekly bonus points cover going over. */
+   Optional weekly bonus points cover going over. Calorie days sit outside the sins budget:
+   they don't use sins, earn carry-over or touch the bonus — carry-over waits for the next sins day. */
 function weekBudget(week, s, todayPoints){
   const daily = +s.daily_points || 0, carryOn = s.carry_over !== false;
   let carry = 0, bonus = +s.weekly_points || 0;
@@ -694,6 +699,7 @@ function weekBudget(week, s, todayPoints){
   for (const d of week.days) {
     const used = (todayPoints && todayPoints.day === d.day) ? todayPoints.points : d.points;
     const counts = !start || d.day >= start;
+    if (dayMode(d) === 'calories') { out[d.day] = { carryIn: 0, avail: 0, used, left: 0, bonusUsed: 0, counts: false, calories: true, carryHeld: counts ? carry : 0 }; continue; }
     const avail = daily + (counts ? carry : 0), left = avail - used;
     const bonusUsed = counts ? Math.min(Math.max(0, -left), bonus) : 0; bonus -= bonusUsed;
     out[d.day] = { carryIn: counts ? carry : 0, avail, used, left, bonusUsed, counts };
@@ -702,6 +708,11 @@ function weekBudget(week, s, todayPoints){
   out.bonusLeft = bonus;
   out.weekLeft = week.days.reduce((a, d) => a - (out[d.day].counts ? out[d.day].used : 0), allowance);
   return out;
+}
+function dayMode(d){ return (d && d.mode) || (S.settings && S.settings.track_mode) || 'points'; }
+async function setDayMode(day, mode){
+  await api(`/day/${day}/mode`, {method:'PUT', body:{mode}});
+  toast(mode === 'calories' ? 'Counting calories today' : 'Counting sins today');
 }
 function scaleFood(f, grams){
   const k = grams / 100;
@@ -900,8 +911,10 @@ function weekdayLetter(iso){ return parseISO(iso).toLocaleDateString('en-GB', {w
 function motivation(g){
   const t = g.today, s = S.settings, miss = ['breakfast','lunch','dinner'].filter(m => !t.meals.includes(m));
   if (!t.entries) return g.streak > 1 ? `Log something today to keep your 🔥 ${g.streak}-day streak alive.` : 'Log your first bite today to start a streak 🔥';
-  if (t.used > t.avail) return `Over today — no stress. Tomorrow's a fresh ${s.daily_points} sins 💪`;
-  if (t.on_track && !miss.length) return 'Day complete — all meals logged and within your sins ✅';
+  const cal = t.mode === 'calories';
+  if (cal && t.kcal > t.kcal_target) return 'Over your calories today — no stress, tomorrow\'s a fresh start 💪';
+  if (!cal && t.used > t.avail) return `Over today — no stress. Tomorrow's a fresh ${s.daily_points} sins 💪`;
+  if (t.on_track && !miss.length) return `Day complete — all meals logged and within your ${cal ? 'calories' : 'sins'} ✅`;
   if (t.on_track) return `On track! Log ${miss.join(' & ')} to complete the day ✅`;
   return 'Nice start — log one more thing to be on track today ⭐';
 }
@@ -965,7 +978,7 @@ function celebrationContent(ev){
                sub, quote: ev.quote, cta: ev.milestone ? 'Keep the fire going' : "Let's do this", confetti: ev.milestone ? 'big' : null, theme: ev.milestone,
                extra: ev.best > ev.streak ? `<p class="hint" style="text-align:center">Your best is ${ev.best} days — you're ${ev.best - ev.streak} away.</p>` : ev.streak > 1 ? '<p class="hint" style="text-align:center">This is your best streak yet 🙌</p>' : '' };
     }
-    case 'daygoal': return { icon: '✅', anim: 'bounce', kicker: 'Daily goal', title: 'Day smashed!', sub: `All three meals logged and within your sins (${ev.used} of ${ev.avail}).`, quote: q(), cta: 'Nice one', confetti: 'small', theme: true };
+    case 'daygoal': return { icon: '✅', anim: 'bounce', kicker: 'Daily goal', title: 'Day smashed!', sub: ev.mode === 'calories' ? `All three meals logged and within your calories (${fmt(ev.kcal)} of ${fmt(ev.kcal_target)} kcal).` : `All three meals logged and within your sins (${ev.used} of ${ev.avail}).`, quote: q(), cta: 'Nice one', confetti: 'small', theme: true };
     case 'water': return { icon: '💧', anim: 'bounce', kicker: 'Water goal', title: 'Hydration hero!', sub: `${ev.target} glasses today — your body says thanks.`, cta: 'Cheers', confetti: 'small' };
     case 'week': return { icon: '🥇', anim: 'bounce', kicker: 'Last week', title: 'Week won!', sub: `${ev.on_track_days} on-track days — your goal was ${ev.goal}.`, quote: q(), cta: 'Bring on this week', confetti: 'big', theme: true };
     case 'month': return { icon: '👑', anim: 'spinin', kicker: monthName(ev.month), title: 'Month master!', sub: `${ev.on_track_days} on-track days in ${monthName(ev.month)}. That's a habit now.`, quote: q(), cta: 'Onwards', confetti: 'big', theme: true };
@@ -1060,6 +1073,58 @@ async function drawNotif(){
   $('#nTest').onclick = async () => { const r = await api('/push/test', {method:'POST'}); toast(r.sent ? 'Test sent — check your notifications' : "Couldn't deliver — try turning notifications off and on"); };
   $('#nOff').onclick = pushDisable;
 }
+
+
+/* =====================================================================
+   WITHINGS
+   ===================================================================== */
+async function withingsAuto(){ try { const st = await api('/withings/status'); if (st.connected) { const r = await api('/withings/sync?auto=true', {method:'POST'}); if (r.added && S.tab === 'progress') renderProgress(); } } catch {} }
+async function drawWithings(){
+  const el = $('#withingsBody'); if (!el) return;
+  let st; try { st = await api('/withings/status'); } catch { el.innerHTML = ''; return; }
+  if (!st.configured) { el.innerHTML = '<p class="hint" style="margin-top:0">Withings sync isn\'t set up on this server yet.</p>'; return; }
+  if (!st.connected) {
+    el.innerHTML = `<p class="hint" style="margin-top:0">Have a Withings scale? Connect your own Withings account and your weigh-ins will appear here automatically.</p>
+      <button class="btn" id="wConn" style="margin-top:12px">⚖️ Connect Withings</button>`;
+    $('#wConn').onclick = async () => { const r = await api('/withings/connect'); location.href = r.url; };
+    return;
+  }
+  el.innerHTML = `<div class="urow" style="padding:0"><span class="av sm" style="background:var(--mint)">✓</span>
+      <span class="n"><b>Connected</b><span>${st.last_sync ? 'Last synced ' + ago(st.last_sync) : 'Not synced yet'} · ${st.imported || 0} weigh-in${st.imported == 1 ? '' : 's'} imported</span></span></div>
+    ${st.last_error ? `<p class="hint" style="color:var(--coral)">${esc(st.last_error)}</p>` : ''}
+    <div class="btn-row"><button class="btn sec" id="wSync">Sync now</button><button class="btn danger" id="wOff">Disconnect</button></div>
+    <p class="hint">Checks for new weigh-ins every 30 minutes and whenever you open MyTrack. Weights you type in yourself are never overwritten.</p>`;
+  $('#wSync').onclick = async () => { $('#wSync').textContent = 'Syncing…'; const r = await api('/withings/sync', {method:'POST'});
+    toast(r.ok ? (r.added ? `${r.added} new weigh-in${r.added > 1 ? 's' : ''} ⚖️` : 'Up to date ✓') : r.error); drawWithings(); gameCheck(); };
+  $('#wOff').onclick = async () => { if (!confirm('Disconnect Withings? Weigh-ins already imported stay in your history.')) return;
+    await api('/withings', {method:'DELETE'}); toast('Withings disconnected'); drawWithings(); };
+}
+
+
+/* ---------- body fat (from Withings or any scale that reports it) ---------- */
+let FAT_RANGE = 90;
+function fatCard(ws){
+  const all = ws.filter(w => w.fat_pct);
+  if (!all.length) return '';
+  const cutoff = FAT_RANGE ? addDays(TODAY(), -FAT_RANGE) : '0000';
+  const fw = all.filter(w => w.day >= cutoff).length >= 2 ? all.filter(w => w.day >= cutoff) : all;
+  const last = all.at(-1), first = fw[0], d = r1(last.fat_pct - first.fat_pct);
+  const mass = w => w.kg * w.fat_pct / 100, fm = mass(last), lean = last.kg - fm, dm = fm - mass(first);
+  const fdate = x => parseISO(x).toLocaleDateString('en-GB', {day:'numeric', month:'short'});
+  return `<section class="card" id="fatCard"><h3>Body fat <span class="sub">${fdate(last.day)}</span></h3>
+    <div class="stat3"><div><b>${r1(last.fat_pct)}%</b><span>Latest</span></div>
+      <div><b style="color:${d <= 0 ? 'var(--mint)' : 'var(--coral)'}">${d === 0 ? '–' : (d < 0 ? '▼ ' : '▲ ') + Math.abs(d) + '%'}</b><span>Since ${fdate(first.day)}</span></div>
+      <div><b>${showWeight(fm)}</b><span>Fat mass</span></div></div>
+    <div class="seg" id="fatRange" style="box-shadow:none;background:var(--bg);margin-top:14px">${[[30,'30 days'],[90,'90 days'],[365,'1 year'],[0,'All']].map(([v,l]) => `<button data-r="${v}" class="${FAT_RANGE === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div style="margin-top:12px">${weightChart(fw, null, { key: 'fat_pct', color: 'var(--blue3)', id: 'fg', pad: .5, ylab: v => r1(v) + '%',
+      empty: '<div class="empty" style="padding:16px"><div class="e">📉</div>One more reading and your body fat chart appears here</div>' })}</div>
+    <div class="g-prog" style="margin-top:8px"><span>Lean mass <b>${showWeight(lean)}</b></span>
+      ${fw.length > 1 && Math.abs(dm) >= .05 ? `<span>Fat mass <b style="color:${dm <= 0 ? 'var(--mint)' : 'var(--coral)'}">${dm <= 0 ? '▼' : '▲'} ${diffWeight(dm)}</b></span>` : ''}</div>
+    <p class="hint">From your scale's readings. Body fat % naturally bounces around by a percent or two day to day — the trend over weeks is what counts.</p>
+  </section>`;
+}
+document.addEventListener('click', e => { const b = e.target.closest('#fatRange [data-r]'); if (!b) return;
+  FAT_RANGE = +b.dataset.r; api('/weights').then(ws => { const c = $('#fatCard'); if (c) c.outerHTML = fatCard(ws); }); });
 
 /* ---------- API ---------- */
 async function api(path, opts={}){
@@ -1176,8 +1241,11 @@ function renderToday(){
   const tot = es.reduce((a, e) => { ['kcal','protein','carbs','fat','points'].forEach(k => a[k] += +e[k] || 0); return a; }, {kcal:0,protein:0,carbs:0,fat:0,points:0});
   const wb = weekBudget(S.week, s, {day: S.day, points: tot.points}), b = wb[S.day] || {avail: s.daily_points, carryIn: 0, left: s.daily_points - tot.points};
   const dailyLeft = b.left, hasBonus = (+s.weekly_points || 0) > 0;
-  const mode = s.track_mode || 'points';
+  const mode = dayMode(dd);
   const kcalLeft = s.calorie_target - tot.kcal;
+  const modeSeg = `<div class="seg mode-seg" id="modeSeg" role="group" aria-label="What to count ${S.day === TODAY() ? 'today' : 'this day'}">
+      <button data-m="points" class="${mode !== 'calories' ? 'on' : ''}">😈 Count sins</button>
+      <button data-m="calories" class="${mode === 'calories' ? 'on' : ''}">🔥 Count calories</button></div>`;
 
   let ring;
   if (mode === 'calories') {
@@ -1191,7 +1259,8 @@ function renderToday(){
     : `<div class="hs"><div class="k">Used today</div><div class="v">${tot.points} <small>/ ${b.avail}</small></div></div>
        ${hasBonus ? `<div class="hs flex"><div class="k">Bonus left</div><div class="v">${wb.bonusLeft} <small>/ ${s.weekly_points}</small></div></div>`
          : `<div class="hs flex"><div class="k">Carried over</div><div class="v">+${b.carryIn} <small>sins</small></div></div>`}`;
-  const kcalBar = mode === 'calories' ? `<div class="kcal-line"><span>Sins today</span><b>${tot.points} sins</b></div>` :
+  const held = b.carryHeld || 0;
+  const kcalBar = mode === 'calories' ? `<div class="kcal-line paused"><span>Sins paused${held ? ` · ${held} saved for your next sins day` : ''}</span><b>${tot.points} sins</b></div>` :
     `<div class="kcal-line"><span>Calories</span><b>${fmt(tot.kcal)} <span>/ ${fmt(s.calorie_target)} kcal</span></b></div>
      <div class="bar ${tot.kcal > s.calorie_target ? 'over':''}"><i style="width:${Math.min(100, tot.kcal / s.calorie_target * 100)}%"></i></div>`;
   const macros = s.show_macros ? `<div class="macros">
@@ -1206,18 +1275,18 @@ function renderToday(){
     const list = es.filter(e => e.meal === m.id);
     const mp = list.reduce((a, e) => a + (+e.points||0), 0), mk = list.reduce((a, e) => a + (+e.kcal||0), 0);
     return `<section class="card">
-      <div class="meal-h"><div class="meal-ic">${m.ic}</div><div class="t"><b>${m.name}</b><span>${list.length ? `${mp} sins · ${fmt(mk)} kcal` : 'Nothing yet'}</span></div>
+      <div class="meal-h"><div class="meal-ic">${m.ic}</div><div class="t"><b>${m.name}</b><span>${list.length ? (mode === 'calories' ? `${fmt(mk)} kcal` : `${mp} sins · ${fmt(mk)} kcal`) : 'Nothing yet'}</span></div>
         <button class="more" data-copy="${m.id}" aria-label="Copy from yesterday" title="Copy from yesterday"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="3"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/></svg></button></div>
       ${list.map(e => `<div class="entry" data-e="${e.id}">
           <div class="n"><b>${esc(e.name)}</b><span>${esc(e.unit_label || (e.amount_g ? r0(e.amount_g)+' g' : 'Quick add'))}${e.brand ? ' · ' + esc(e.brand) : ''}</span></div>
           <span class="kc">${fmt(e.kcal)} kcal</span>
-          <span class="pill ${e.points == 0 ? 'zero' : ''}">${e.points}</span></div>`).join('')}
+          ${mode === 'calories' ? '' : `<span class="pill ${e.points == 0 ? 'zero' : ''}">${e.points}</span>`}</div>`).join('')}
       <button class="add-row" data-add="${m.id}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add ${m.name.toLowerCase()}</button>
     </section>`;
   }).join('');
 
   $('#view').innerHTML = `
-    <section class="card hero-card"><div class="hero">${ring}<div class="hero-stats">${stats}</div></div>${kcalBar}${macros}</section>
+    <section class="card hero-card">${modeSeg}<div class="hero">${ring}<div class="hero-stats">${stats}</div></div>${kcalBar}${macros}</section>
     ${S.day === TODAY() ? '<section class="card game-card" id="gameCard"></section>' : ''}
     <section class="card"><h3>Water <span class="sub">${wn} of ${wt} glasses</span></h3><div class="water">${glasses}</div></section>
     ${meals}`;
@@ -1228,6 +1297,10 @@ function renderToday(){
     if (v > wn) buzz();
     await api('/water/' + S.day, {method:'PUT', body:{glasses: v}});
     loadDay();
+  });
+  $('#modeSeg').querySelectorAll('[data-m]').forEach(b => b.onclick = async () => {
+    if (b.dataset.m === mode) return;
+    await setDayMode(S.day, b.dataset.m); loadDay();
   });
   $('#view').querySelectorAll('[data-add]').forEach(b => b.onclick = () => openAdd(b.dataset.add));
   $('#view').querySelectorAll('[data-e]').forEach(b => b.onclick = () => openEntry(es.find(e => e.id == b.dataset.e)));
@@ -1547,13 +1620,19 @@ async function renderWeekTab(){
   const wk = await api('/week/' + S.day); S.week = wk;
   const s = S.settings, t = TODAY();
   const wb = weekBudget(wk, s);
-  const max = Math.max(s.daily_points * 1.6, ...wk.days.map(d => Math.max(d.points, wb[d.day].avail)));
-  const total = wk.days.reduce((a, d) => a + d.points, 0), kc = wk.days.reduce((a, d) => a + d.kcal, 0);
+  // calorie days are drawn on the same scale: hitting the calorie target = a full day's sins
+  const asSins = d => dayMode(d) === 'calories' ? d.kcal / (+s.calorie_target || 1) * s.daily_points : d.points;
+  const max = Math.max(s.daily_points * 1.6, ...wk.days.map(d => Math.max(asSins(d), wb[d.day].avail)));
+  const sinDays = wk.days.filter(d => dayMode(d) !== 'calories'), calDays = wk.days.length - sinDays.length;
+  const total = sinDays.reduce((a, d) => a + d.points, 0), kc = wk.days.reduce((a, d) => a + d.kcal, 0);
   const logged = wk.days.filter(d => d.points || d.kcal).length;
+  const kShort = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : r0(n);
   const cols = wk.days.map(d => {
-    const dt = parseISO(d.day), h = d.points / max * 100, line = s.daily_points / max * 100;
-    const cls = !d.points && !d.kcal ? 'empty' : d.points > wb[d.day].avail ? 'over' : d.day === t ? 'today' : '';
-    return `<div class="wd" data-d="${d.day}"><span class="num">${d.points || ''}</span><div class="col ${cls}" style="height:${Math.max(3, h)}%"></div><small>${dt.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</small></div>`;
+    const cal = dayMode(d) === 'calories', dt = parseISO(d.day), h = asSins(d) / max * 100;
+    const over = cal ? d.kcal > s.calorie_target : d.points > wb[d.day].avail;
+    const cls = !d.points && !d.kcal ? 'empty' : over ? 'over' : d.day === t ? 'today' : cal ? 'cal' : '';
+    const num = cal ? (d.kcal ? kShort(d.kcal) : '') : (d.points || '');
+    return `<div class="wd" data-d="${d.day}"><span class="num">${num}</span><div class="col ${cls}" style="height:${Math.max(3, h)}%"></div><small>${dt.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</small></div>`;
   }).join('');
   const startD = parseISO(wk.start), endD = parseISO(addDays(wk.start, 6));
   $('#view').innerHTML = `
@@ -1561,8 +1640,8 @@ async function renderWeekTab(){
       <div class="stat3"><div><b style="color:${wb.weekLeft < 0 ? 'var(--coral)' : 'inherit'}">${wb.weekLeft}</b><span>Left this week</span></div>
       <div><b>${total}</b><span>Sins used</span></div><div><b>${logged ? fmt(kc / logged) : '–'}</b><span>Avg kcal/day</span></div></div>
       <div class="week" style="margin-top:18px">${cols}</div>
-      <div class="legend"><span><i style="background:var(--blue3)"></i>Within daily</span><span><i style="background:var(--sun)"></i>Over allowance</span><span><i style="background:var(--blue)"></i>Today</span></div>
-      <p class="hint">${s.daily_points} sins a day (1 sin = ${kpp()} kcal).${s.carry_over !== false ? ' Sins you don\'t use roll over to the next day.' : ''}${(+s.weekly_points||0) > 0 ? ` Plus ${s.weekly_points} bonus sins for the week.` : ''} Everything resets every ${s.week_start == 0 ? 'Sunday' : 'Monday'}.</p>
+      <div class="legend"><span><i style="background:var(--blue3)"></i>Within daily</span><span><i style="background:var(--sun)"></i>Over allowance</span><span><i style="background:var(--blue)"></i>Today</span>${calDays ? '<span><i style="background:var(--mint)"></i>Calorie day</span>' : ''}</div>
+      <p class="hint">${s.daily_points} sins a day (1 sin = ${kpp()} kcal).${s.carry_over !== false ? ' Sins you don\'t use roll over to the next day.' : ''}${(+s.weekly_points||0) > 0 ? ` Plus ${s.weekly_points} bonus sins for the week.` : ''} Everything resets every ${s.week_start == 0 ? 'Sunday' : 'Monday'}.${calDays ? ` Calorie days count against ${fmt(s.calorie_target)} kcal instead and don't use any sins.` : ''}</p>
     </section>
     <div class="btn-row"><button class="btn sec" id="wPrev">‹ Previous week</button><button class="btn sec" id="wNext">Next week ›</button></div>`;
   $('#view').querySelectorAll('.wd').forEach(d => d.onclick = () => { S.day = d.dataset.d; setTab('today'); });
@@ -1582,22 +1661,24 @@ function diffWeight(kg){
   if (S.settings.weight_unit === 'kg') return `${r1(a)} kg`;
   const lbs = a / 0.45359237; return lbs >= 14 ? `${Math.floor(lbs/14)} st ${r1(lbs % 14)} lb` : `${r1(lbs)} lb`;
 }
-function weightChart(ws, goal){
-  if (ws.length < 2) return `<div class="empty" style="padding:16px"><div class="e">⚖️</div>Log your weight a couple of times to see your chart</div>`;
-  const W = 520, H = 200, P = {l: 8, r: 8, t: 14, b: 22};
-  const xs = ws.map(w => parseISO(w.day).getTime()), ys = ws.map(w => w.kg);
+function weightChart(ws, goal, o = {}){
+  const key = o.key || 'kg', col = o.color || 'var(--chart)', gid = o.id || 'wg', padV = o.pad ?? 1;
+  if (ws.length < 2) return o.empty || `<div class="empty" style="padding:16px"><div class="e">⚖️</div>Log your weight a couple of times to see your chart</div>`;
+  const W = 520, H = 200, P = {l: o.ylab ? 40 : 8, r: 8, t: 14, b: 22};
+  const xs = ws.map(w => parseISO(w.day).getTime()), ys = ws.map(w => w[key]);
   if (goal) ys.push(goal);
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) - 1, y1 = Math.max(...ys) + 1;
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) - padV, y1 = Math.max(...ys) + padV;
   const X = t => P.l + (t - x0) / (x1 - x0 || 1) * (W - P.l - P.r), Y = v => P.t + (1 - (v - y0) / (y1 - y0)) * (H - P.t - P.b);
-  const pts = ws.map(w => [X(parseISO(w.day).getTime()), Y(w.kg)]);
+  const pts = ws.map(w => [X(parseISO(w.day).getTime()), Y(w[key])]);
   const path = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const area = path + ` L${pts.at(-1)[0]} ${H - P.b} L${pts[0][0]} ${H - P.b} Z`;
   const fd = d => parseISO(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="overflow:visible">
-    <defs><linearGradient id="wg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" style="stop-color:var(--chart);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--chart);stop-opacity:0"/></linearGradient></defs>
+    <defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" style="stop-color:${col};stop-opacity:.28"/><stop offset="1" style="stop-color:${col};stop-opacity:0"/></linearGradient></defs>
+    ${o.ylab ? [y1 - padV, y0 + padV].map(v => `<text x="0" y="${(Y(v) + 4).toFixed(1)}" font-size="12" font-weight="800" style="fill:var(--muted)">${o.ylab(v)}</text><line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}" style="stroke:var(--line)" stroke-dasharray="3 5"/>`).join('') : ''}
     ${goal ? `<line x1="${P.l}" x2="${W-P.r}" y1="${Y(goal)}" y2="${Y(goal)}" stroke="#14B386" stroke-width="2" stroke-dasharray="6 6"/><text x="${W-P.r}" y="${Y(goal)-6}" text-anchor="end" font-size="12" font-weight="800" fill="#14B386">Goal</text>` : ''}
-    <path d="${area}" fill="url(#wg)"/><path d="${path}" fill="none" style="stroke:var(--chart)" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
-    ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" style="fill:var(--card);stroke:var(--chart)" stroke-width="3"/>`).join('')}
+    <path d="${area}" fill="url(#${gid})"/><path d="${path}" fill="none" style="stroke:${col}" stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4.5" style="fill:var(--card);stroke:${col}" stroke-width="3"/>`).join('')}
     <text x="${P.l}" y="${H-4}" font-size="12" font-weight="800" style="fill:var(--muted)">${fd(ws[0].day)}</text>
     <text x="${W-P.r}" y="${H-4}" text-anchor="end" font-size="12" font-weight="800" style="fill:var(--muted)">${fd(ws.at(-1).day)}</text></svg>`;
 }
@@ -1623,9 +1704,10 @@ async function renderProgress(){
       <p class="hint">Logs against ${S.day === TODAY() ? 'today' : parseISO(S.day).toLocaleDateString('en-GB',{day:'numeric',month:'short'})}. Tap an entry to remove it.</p>
       <div style="margin-top:6px">${ws.slice().reverse().slice(0, 12).map((w, i, arr) => {
         const prev = arr[i + 1]; const d = prev ? w.kg - prev.kg : 0;
-        return `<div class="wl" data-w="${w.day}"><span>${parseISO(w.day).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</span>
+        return `<div class="wl" data-w="${w.day}"><span>${parseISO(w.day).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}${w.source === 'withings' || w.fat_pct ? `<br><small style="font-size:11.5px;color:var(--muted)">${w.source === 'withings' ? '⚖️ Withings' : ''}${w.source === 'withings' && w.fat_pct ? ' · ' : ''}${w.fat_pct ? r1(w.fat_pct) + '% fat' : ''}</small>` : ''}</span>
           <div>${showWeight(w.kg)} ${prev && Math.abs(d) > 0.04 ? `<span class="d ${d > 0 ? 'up' : ''}">${d > 0 ? '▲' : '▼'} ${diffWeight(d)}</span>` : ''}</div></div>`; }).join('')}</div>
     </section>
+    ${fatCard(ws)}
     <section class="card"><h3>Last 30 days</h3>
       <div class="stat3"><div><b>${hist.length}</b><span>Days logged</span></div><div><b>${hist.length ? r0(avgP) : '–'}</b><span>Avg sins/day</span></div><div><b>${hist.length ? fmt(avgK) : '–'}</b><span>Avg kcal/day</span></div></div>
     </section>`;
@@ -1665,9 +1747,10 @@ function renderSettings(){
         : `<input id="gst" inputmode="numeric" value="${goalSt}" placeholder="st"><input id="glb" inputmode="decimal" value="${goalLb}" placeholder="lb">`}</div></div>
     </section>
     <section class="card"><h3>Your budget</h3>
-      <div class="field" style="margin-top:0"><label>Main tracker</label><select id="sm">
-        <option value="points" ${s.track_mode!=='calories'?'selected':''}>Sins (calories shown underneath)</option>
-        <option value="calories" ${s.track_mode==='calories'?'selected':''}>Calories (sins shown underneath)</option></select></div>
+      <div class="field" style="margin-top:0"><label>Normally count</label><select id="sm">
+        <option value="points" ${s.track_mode!=='calories'?'selected':''}>Sins</option>
+        <option value="calories" ${s.track_mode==='calories'?'selected':''}>Calories</option></select></div>
+      <p class="hint">Switch any single day between sins and calories with the toggle at the top of the Today screen. Calorie days don't use sins — any carried-over sins wait for your next sins day.</p>
       <div class="grid2"><div class="field"><label>Daily sins</label><input id="sdp" inputmode="numeric" value="${s.daily_points}"></div>
       <div class="field"><label>Calories per sin</label><input id="skp" inputmode="numeric" value="${kpp()}"></div></div>
       <div class="toggle" id="sco">Carry unused sins to the next day<span class="sw ${s.carry_over !== false ? 'on' : ''}"></span></div>
@@ -1686,13 +1769,14 @@ function renderSettings(){
       <p class="hint">${s.carry_over !== false ? 'Sins you don\'t use roll over to the next day, so a light Monday gives you more on Tuesday. ' : ''}Everything resets at the start of each week (${s.week_start == 0 ? 'Sunday' : 'Monday'}).</p>
       <p class="hint">Mark fresh fruit, veg, eggs and the like as <span class="badge">zero-sin</span> and they'll never count against your sins — but they still count towards calories.</p>
     </section>
+    <section class="card" id="withingsCard"><h3>Withings scale</h3><div id="withingsBody"><div class="spin"></div></div></section>
     <section class="card" id="notifCard"><h3>Notifications</h3><div id="notifBody"><div class="spin"></div></div></section>
     <section class="card" id="installCard"><h3>Install on your phone</h3><div id="installBody"></div></section>
     <section class="card"><h3>Your data</h3>
       <a class="btn sec" href="/api/export" style="display:block;text-align:center;text-decoration:none;margin-top:0">Download my data</a>
       <p class="hint">Nutrition data from <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="color:var(--blue)">Open Food Facts</a>, available under the Open Database Licence.</p>
     </section>`;
-  drawInstall(); drawNotif();
+  drawInstall(); drawNotif(); drawWithings();
   $('#swUser').onclick = signOut;
   $('#chPin').onclick = openChangePin;
   $('#goAdmin') && ($('#goAdmin').onclick = () => setTab('admin'));
@@ -1836,6 +1920,9 @@ async function boot(){
     if (qp.toString()) history.replaceState(null, '', '/');
     setTab(['today','week','progress','settings'].includes(startTab) ? startTab : S.tab);
     if (startAdd === 'scan') openAdd(null, 'scan'); else if (startAdd === 'quick') { openAdd(null, 'search'); openQuick(); }
+    const wq = qp.get('withings');
+    if (wq) setTimeout(() => toast({ connected: 'Withings connected — weigh-ins imported ⚖️', cancelled: 'Withings connection cancelled', error: "Couldn't connect Withings — please try again" }[wq] || ''), 600);
+    withingsAuto();
   } catch (e) { if (e.message !== 'auth') $('#view').innerHTML = `<div class="empty"><div class="e">📡</div><b>${navigator.onLine ? "Can't reach MyTrack right now" : "You're offline"}</b><br>Your diary will load as soon as you're connected again.<br><br><button class="btn sec" onclick="location.reload()" style="width:auto;padding:12px 24px">Try again</button></div>`; }
 }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.tab === 'today' && S.settings) { if (S._lastToday && S._lastToday !== TODAY() && S.day === S._lastToday) S.day = TODAY(); S._lastToday = TODAY(); loadDay(); } });
@@ -1872,5 +1959,6 @@ function drawInstall(){
 applyTheme(lsGet('mytrack_theme') || 'auto');
 boot();
 </script>
+<script src="/supps.js?v=1"></script>
 </body>
 </html>

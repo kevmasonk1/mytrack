@@ -16,6 +16,9 @@ services:
       - VAPID_SUBJECT=https://mytrack.marvelcloud.uk   # identifies this server to Apple/Google push services
       - WATCHFILES_FORCE_POLLING=true                  # needed for live reload on Docker Desktop for Windows
       - PYTHONDONTWRITEBYTECODE=1
+      - WITHINGS_CLIENT_ID=91fc4a55c16dd28be41dc132e3e4e3c7dfb51539add282ab10bee280678df44f
+      - "WITHINGS_CLIENT_SECRET=${WITHINGS_CLIENT_SECRET:?Set WITHINGS_CLIENT_SECRET in .env}"
+      - WITHINGS_REDIRECT_URI=https://mytrack.marvelcloud.uk/api/withings/callback
     volumes:
       - ./data:/data
       - ./app:/app

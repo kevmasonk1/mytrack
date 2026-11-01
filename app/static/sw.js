@@ -1,7 +1,7 @@
 // MyTrack service worker.
 // App shell is cached so the app opens instantly and works offline (diary needs the server).
 // Bump VERSION after changing files to roll out an update; the app reloads itself.
-const VERSION = 'mytrack-v12';
+const VERSION = 'mytrack-v14';
 const SHELL = ['/', '/offline.html', '/html5-qrcode.min.js', '/manifest.json', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon-32.png'];
 
 self.addEventListener('install', e => {

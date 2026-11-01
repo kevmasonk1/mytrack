@@ -1,0 +1,382 @@
+diff --git a/app/main.py b/app/main.py
+index 0188f9e..5d7c732 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -57,8 +57,9 @@ DEFAULT_SETTINGS = {
+     "goal_weight_kg": None,
+     "water_target": 8,
+     "show_macros": True,
+-    "track_mode": "points",   # points | calories
++    "track_mode": "points",   # default for each day: points | calories (any day can be switched on the Today screen)
+ }
++MODES = ("points", "calories")
+ 
+ # ---------------------------------------------------------------- database
+ SCHEMA = """
+@@ -122,6 +123,7 @@ CREATE TABLE IF NOT EXISTS push_subs (
+ CREATE TABLE IF NOT EXISTS user_visits (user_id INTEGER, day TEXT, PRIMARY KEY (user_id, day));
+ CREATE TABLE IF NOT EXISTS user_badges (user_id INTEGER, badge TEXT, earned_at REAL, seen INTEGER DEFAULT 0, PRIMARY KEY (user_id, badge));
+ CREATE TABLE IF NOT EXISTS user_water (user_id INTEGER, day TEXT, glasses INTEGER DEFAULT 0, PRIMARY KEY (user_id, day));
++CREATE TABLE IF NOT EXISTS user_day_mode (user_id INTEGER, day TEXT, mode TEXT NOT NULL, PRIMARY KEY (user_id, day));
+ """
+ 
+ 
+@@ -258,6 +260,16 @@ def get_settings(uid: int):
+     return {**DEFAULT_SETTINGS, **stored, "name": u["name"] if u else ""}
+ 
+ 
++def day_modes(c, uid: int, s: dict, start: str, end: str) -> dict:
++    """{day: mode} for days with an explicit choice; anything missing uses s['track_mode']."""
++    return {r["day"]: r["mode"] for r in c.execute(
++        "SELECT day, mode FROM user_day_mode WHERE user_id=? AND day BETWEEN ? AND ?", (uid, start, end))}
++
++
++def default_mode(s: dict) -> str:
++    return s.get("track_mode") if s.get("track_mode") in MODES else "points"
++
++
+ # ---------------------------------------------------------------- auth
+ def sign(value: str) -> str:
+     return value + "." + hmac.new(SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
+@@ -363,8 +375,14 @@ def read_settings(request: Request):
+ @app.put("/api/settings")
+ def write_settings(request: Request, body: dict):
+     uid = uid_of(request)
+-    before = get_settings(uid)["kcal_per_point"]
++    old = get_settings(uid)
++    before = old["kcal_per_point"]
+     with db() as c:
++        if body.get("track_mode") in MODES and body["track_mode"] != default_mode(old):
++            # Changing the default only affects today onwards: pin earlier logged days to the mode they were tracked in.
++            c.execute("INSERT OR IGNORE INTO user_day_mode(user_id, day, mode) "
++                      "SELECT DISTINCT user_id, day, ? FROM entries WHERE user_id=? AND day<?",
++                      (default_mode(old), uid, date.today().isoformat()))
+         for k, v in body.items():
+             if k in DEFAULT_SETTINGS:
+                 c.execute("INSERT OR REPLACE INTO user_settings VALUES (?,?,?)", (uid, k, json.dumps(v)))
+@@ -436,7 +454,28 @@ def get_day(request: Request, day: str):
+         entries = rows(c.execute("SELECT * FROM entries WHERE user_id=? AND day=? ORDER BY created", (uid, day)))
+         w = c.execute("SELECT glasses FROM user_water WHERE user_id=? AND day=?", (uid, day)).fetchone()
+         wt = c.execute("SELECT kg FROM user_weights WHERE user_id=? AND day=?", (uid, day)).fetchone()
+-    return {"day": day, "entries": entries, "water": w["glasses"] if w else 0, "weight_kg": wt["kg"] if wt else None}
++        s = get_settings(uid)
++        mode = day_modes(c, uid, s, day, day).get(day, default_mode(s))
++    return {"day": day, "entries": entries, "water": w["glasses"] if w else 0, "weight_kg": wt["kg"] if wt else None,
++            "mode": mode}
++
++
++class DayMode(BaseModel):
++    mode: str
++
++
++@app.put("/api/day/{day}/mode")
++def set_day_mode(request: Request, day: str, b: DayMode):
++    """Switch one day between counting sins and counting calories."""
++    if b.mode not in MODES:
++        raise HTTPException(400, "mode must be 'points' or 'calories'")
++    try:
++        date.fromisoformat(day)
++    except ValueError:
++        raise HTTPException(400, "Bad date")
++    with db() as c:
++        c.execute("INSERT OR REPLACE INTO user_day_mode(user_id, day, mode) VALUES (?,?,?)", (uid_of(request), day, b.mode))
++    return {"day": day, "mode": b.mode}
+ 
+ 
+ @app.get("/api/week/{day}")
+@@ -451,11 +490,13 @@ def get_week(request: Request, day: str):
+         totals = {r["day"]: dict(r) for r in c.execute(
+             "SELECT day, SUM(kcal) kcal, SUM(points) points, SUM(protein) protein, SUM(carbs) carbs, SUM(fat) fat "
+             "FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day", (uid, days[0], days[-1]))}
++        modes = day_modes(c, uid, s, days[0], days[-1])
+     out = []
+     for dd in days:
+         t = totals.get(dd, {})
+         out.append({"day": dd, "kcal": t.get("kcal") or 0, "points": t.get("points") or 0,
+-                    "protein": t.get("protein") or 0, "carbs": t.get("carbs") or 0, "fat": t.get("fat") or 0})
++                    "protein": t.get("protein") or 0, "carbs": t.get("carbs") or 0, "fat": t.get("fat") or 0,
++                    "mode": modes.get(dd, default_mode(s))})
+     return {"start": days[0], "days": out}
+ 
+ 
+@@ -835,13 +876,17 @@ def _week_start(d: date, ws: int) -> date:
+ 
+ 
+ def day_statuses(c, uid, s, start: date, end: date):
+-    """Per-day sins / on-track status, using the same allowance + carry-over rules as the app."""
++    """Per-day sins / on-track status, using the same allowance + carry-over rules as the app.
++    Calorie days sit outside the sins budget: they don't use sins, earn carry-over or touch the weekly
++    bonus (carry-over just passes through to the next sins day). They're on track when under the calorie target."""
+     ws = int(s["week_start"]); a = _week_start(start, ws)
+     daily, weekly = int(s["daily_points"] or 0), int(s["weekly_points"] or 0)
+     carry_on, sd = s.get("carry_over", True) is not False, s.get("start_date")
+-    tot = {r["day"]: (r["p"] or 0, r["n"]) for r in c.execute(
+-        "SELECT day, SUM(points) p, COUNT(*) n FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day",
++    tot = {r["day"]: (r["p"] or 0, r["n"], r["k"] or 0) for r in c.execute(
++        "SELECT day, SUM(points) p, COUNT(*) n, SUM(kcal) k FROM entries WHERE user_id=? AND day BETWEEN ? AND ? GROUP BY day",
+         (uid, a.isoformat(), end.isoformat()))}
++    modes, dmode = day_modes(c, uid, s, a.isoformat(), end.isoformat()), default_mode(s)
++    ktarget = float(s.get("calorie_target") or 0)
+     wt = int(s.get("water_target") or 8)
+     water = {r["day"]: r["glasses"] for r in c.execute(
+         "SELECT day, glasses FROM user_water WHERE user_id=? AND day BETWEEN ? AND ?", (uid, a.isoformat(), end.isoformat()))}
+@@ -849,11 +894,19 @@ def day_statuses(c, uid, s, start: date, end: date):
+     while d <= end:
+         if d == _week_start(d, ws):
+             carry, bonus = 0, weekly
+-        iso = d.isoformat(); used, n = tot.get(iso, (0, 0))
++        iso = d.isoformat(); used, n, kcal = tot.get(iso, (0, 0, 0))
+         counts = not sd or iso >= sd
++        mode = modes.get(iso, dmode)
++        if mode == "calories":
++            out[iso] = {"used": used, "n": n, "avail": 0, "kcal": kcal, "kcal_target": ktarget, "mode": mode,
++                        "on_track": bool(counts and n >= 2 and kcal <= ktarget),
++                        "water_hit": water.get(iso, 0) >= wt, "counts": counts}
++            d += timedelta(days=1)
++            continue
+         avail = daily + (carry if counts else 0); left = avail - used
+         bu = min(max(0, -left), bonus) if counts else 0; bonus -= bu
+-        out[iso] = {"used": used, "n": n, "avail": avail, "on_track": bool(counts and n >= 2 and left + bu >= 0),
++        out[iso] = {"used": used, "n": n, "avail": avail, "kcal": kcal, "kcal_target": ktarget, "mode": mode,
++                    "on_track": bool(counts and n >= 2 and left + bu >= 0),
+                     "water_hit": water.get(iso, 0) >= wt, "counts": counts}
+         if counts:
+             carry = max(0, left) if carry_on else 0
+@@ -944,7 +997,8 @@ def game_state(c, uid, today: date):
+     badges = {r["badge"]: dict(r) for r in c.execute("SELECT * FROM user_badges WHERE user_id=?", (uid,))}
+ 
+     # today's progress
+-    t = st.get(today.isoformat(), {"used": 0, "n": 0, "avail": 0, "on_track": False, "water_hit": False})
++    t = st.get(today.isoformat(), {"used": 0, "n": 0, "avail": 0, "kcal": 0, "kcal_target": 0, "mode": default_mode(s),
++                                   "on_track": False, "water_hit": False})
+     meals = {r[0] for r in c.execute("SELECT DISTINCT meal FROM entries WHERE user_id=? AND day=?", (uid, today.isoformat()))}
+     y = st.get((today - timedelta(days=1)).isoformat(), {})
+ 
+@@ -962,7 +1016,8 @@ def game_state(c, uid, today: date):
+         if last_month["achieved"] and seen.get("month") != last_month["month"]:
+             events.append({"type": "month", "key": "month", "value": last_month["month"], **{k: last_month[k] for k in ("on_track_days", "goal", "month")}})
+         if {"breakfast", "lunch", "dinner"} <= meals and t["on_track"] and seen.get("daygoal") != tiso:
+-            events.append({"type": "daygoal", "key": "daygoal", "value": tiso, "used": t["used"], "avail": t["avail"]})
++            events.append({"type": "daygoal", "key": "daygoal", "value": tiso, "used": t["used"], "avail": t["avail"],
++                           "mode": t["mode"], "kcal": round(t["kcal"]), "kcal_target": round(t["kcal_target"])})
+         if t["water_hit"] and seen.get("water") != tiso:
+             events.append({"type": "water", "key": "water", "value": tiso, "target": int(s.get("water_target") or 8)})
+         for b in BADGES:
+@@ -975,7 +1030,7 @@ def game_state(c, uid, today: date):
+     return {
+         "streak": streak, "best_streak": best, "track_streak": track_streak, "next_milestone": nxt,
+         "today": {"used": t["used"], "avail": t["avail"], "entries": t["n"], "on_track": t["on_track"], "meals": sorted(meals),
+-                  "water_hit": t["water_hit"]},
++                  "water_hit": t["water_hit"], "mode": t["mode"], "kcal": round(t["kcal"]), "kcal_target": round(t["kcal_target"])},
+         "week": week, "month": month, "quote": random.choice(QUOTES),
+         "badges": [{**BADGE_INFO[b[0]], "earned": b[0] in badges, "earned_at": badges.get(b[0], {}).get("earned_at")} for b in BADGES],
+         "events": events,
+@@ -1146,7 +1201,10 @@ def build_notification(c, uid: int, kind: str, now: datetime):
+         g = game_state(c, uid, today)   # read-only use: tells us about unseen week/month wins
+         types = {e["type"]: e for e in g["events"]}
+         carry = t["avail"] - int(s["daily_points"] or 0)
+-        sins = f"{t['avail']} sins ready today" + (f" (incl. {carry} carried over)" if carry > 0 else "")
++        if t["mode"] == "calories":
++            sins = f"Calorie day — {round(t['kcal_target']):,} kcal to play with"
++        else:
++            sins = f"{t['avail']} sins ready today" + (f" (incl. {carry} carried over)" if carry > 0 else "")
+         if "month" in types:
+             e = types["month"]
+             return {"title": "👑 Month master!", "body": f"{e['on_track_days']} on-track days last month. {sins} — let's go again.", "tag": "morning"}
+@@ -1226,6 +1284,7 @@ def export(request: Request):
+             "entries": rows(c.execute("SELECT * FROM entries WHERE user_id=?", (uid,))),
+             "weights": rows(c.execute("SELECT day, kg FROM user_weights WHERE user_id=?", (uid,))),
+             "water": rows(c.execute("SELECT day, glasses FROM user_water WHERE user_id=?", (uid,))),
++            "day_modes": rows(c.execute("SELECT day, mode FROM user_day_mode WHERE user_id=?", (uid,))),
+             "favourites": rows(c.execute(FOOD_SELECT + " WHERE uf.favourite=1", (uid,))),
+         }
+     data["settings"] = get_settings(uid)
+@@ -1329,7 +1388,7 @@ def admin_delete_user(request: Request, uid: int):
+             raise HTTPException(404, "No such user")
+         if u["is_admin"] and active_admins(c, excluding=uid) == 0:
+             raise HTTPException(400, "There must always be at least one admin")
+-        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs"):
++        for t in ("entries", "user_weights", "user_water", "user_settings", "user_foods", "user_visits", "user_badges", "push_subs", "user_day_mode"):
+             c.execute(f"DELETE FROM {t} WHERE user_id=?", (uid,))
+         c.execute("UPDATE foods SET created_by=NULL WHERE created_by=?", (uid,))
+         c.execute("DELETE FROM users WHERE id=?", (uid,))
+diff --git a/app/static/index.html b/app/static/index.html
+index 493b2b4..9646337 100644
+--- a/app/static/index.html
++++ b/app/static/index.html
+@@ -130,6 +130,9 @@ svg{display:block}
+ .seg::-webkit-scrollbar{display:none}
+ .seg button{flex:1;padding:9px 6px;border-radius:999px;font-weight:800;font-size:13.5px;color:var(--muted);white-space:nowrap}
+ .seg button.on{background:var(--blue);color:#fff}
++.mode-seg{background:var(--sky);box-shadow:none;margin-bottom:14px}
++.mode-seg button{padding:8px 6px;font-size:13px}
++.kcal-line.paused span,.kcal-line.paused b{color:var(--muted)}
+ .meal-pick{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+ .meal-pick button{padding:7px 2px;border-radius:999px;background:#fff;font-weight:800;font-size:13px;color:var(--muted);border:2px solid transparent;white-space:nowrap}
+ .meal-pick button.on{border-color:var(--blue);color:var(--blue)}
+@@ -214,6 +217,7 @@ svg{display:block}
+ .wd .col{width:100%;max-width:30px;border-radius:9px 9px 6px 6px;background:var(--blue3);position:relative;min-height:4px}
+ .wd .col.over{background:var(--sun)}
+ .wd .col.today{background:var(--blue)}
++.wd .col.cal{background:var(--mint)}
+ .wd .col.empty{background:var(--line)}
+ .wd small{font-size:11px;font-weight:900;color:var(--muted)}
+ .wd .num{font-size:12px;font-weight:900}
+@@ -684,7 +688,8 @@ function points(n, zero){
+   return Math.max(0, Math.round((n.kcal || 0) / kpp()));
+ }
+ /* Daily allowance with carry-over: unused points roll into the next day, reset each week.
+-   Optional weekly bonus points cover going over. */
++   Optional weekly bonus points cover going over. Calorie days sit outside the sins budget:
++   they don't use sins, earn carry-over or touch the bonus — carry-over waits for the next sins day. */
+ function weekBudget(week, s, todayPoints){
+   const daily = +s.daily_points || 0, carryOn = s.carry_over !== false;
+   let carry = 0, bonus = +s.weekly_points || 0;
+@@ -694,6 +699,7 @@ function weekBudget(week, s, todayPoints){
+   for (const d of week.days) {
+     const used = (todayPoints && todayPoints.day === d.day) ? todayPoints.points : d.points;
+     const counts = !start || d.day >= start;
++    if (dayMode(d) === 'calories') { out[d.day] = { carryIn: 0, avail: 0, used, left: 0, bonusUsed: 0, counts: false, calories: true, carryHeld: counts ? carry : 0 }; continue; }
+     const avail = daily + (counts ? carry : 0), left = avail - used;
+     const bonusUsed = counts ? Math.min(Math.max(0, -left), bonus) : 0; bonus -= bonusUsed;
+     out[d.day] = { carryIn: counts ? carry : 0, avail, used, left, bonusUsed, counts };
+@@ -703,6 +709,11 @@ function weekBudget(week, s, todayPoints){
+   out.weekLeft = week.days.reduce((a, d) => a - (out[d.day].counts ? out[d.day].used : 0), allowance);
+   return out;
+ }
++function dayMode(d){ return (d && d.mode) || (S.settings && S.settings.track_mode) || 'points'; }
++async function setDayMode(day, mode){
++  await api(`/day/${day}/mode`, {method:'PUT', body:{mode}});
++  toast(mode === 'calories' ? 'Counting calories today' : 'Counting sins today');
++}
+ function scaleFood(f, grams){
+   const k = grams / 100;
+   return { kcal: f.kcal*k, protein: f.protein*k, carbs: f.carbs*k, fat: f.fat*k, satfat: f.satfat*k, sugar: f.sugar*k };
+@@ -900,8 +911,10 @@ function weekdayLetter(iso){ return parseISO(iso).toLocaleDateString('en-GB', {w
+ function motivation(g){
+   const t = g.today, s = S.settings, miss = ['breakfast','lunch','dinner'].filter(m => !t.meals.includes(m));
+   if (!t.entries) return g.streak > 1 ? `Log something today to keep your 🔥 ${g.streak}-day streak alive.` : 'Log your first bite today to start a streak 🔥';
+-  if (t.used > t.avail) return `Over today — no stress. Tomorrow's a fresh ${s.daily_points} sins 💪`;
+-  if (t.on_track && !miss.length) return 'Day complete — all meals logged and within your sins ✅';
++  const cal = t.mode === 'calories';
++  if (cal && t.kcal > t.kcal_target) return 'Over your calories today — no stress, tomorrow\'s a fresh start 💪';
++  if (!cal && t.used > t.avail) return `Over today — no stress. Tomorrow's a fresh ${s.daily_points} sins 💪`;
++  if (t.on_track && !miss.length) return `Day complete — all meals logged and within your ${cal ? 'calories' : 'sins'} ✅`;
+   if (t.on_track) return `On track! Log ${miss.join(' & ')} to complete the day ✅`;
+   return 'Nice start — log one more thing to be on track today ⭐';
+ }
+@@ -965,7 +978,7 @@ function celebrationContent(ev){
+                sub, quote: ev.quote, cta: ev.milestone ? 'Keep the fire going' : "Let's do this", confetti: ev.milestone ? 'big' : null, theme: ev.milestone,
+                extra: ev.best > ev.streak ? `<p class="hint" style="text-align:center">Your best is ${ev.best} days — you're ${ev.best - ev.streak} away.</p>` : ev.streak > 1 ? '<p class="hint" style="text-align:center">This is your best streak yet 🙌</p>' : '' };
+     }
+-    case 'daygoal': return { icon: '✅', anim: 'bounce', kicker: 'Daily goal', title: 'Day smashed!', sub: `All three meals logged and within your sins (${ev.used} of ${ev.avail}).`, quote: q(), cta: 'Nice one', confetti: 'small', theme: true };
++    case 'daygoal': return { icon: '✅', anim: 'bounce', kicker: 'Daily goal', title: 'Day smashed!', sub: ev.mode === 'calories' ? `All three meals logged and within your calories (${fmt(ev.kcal)} of ${fmt(ev.kcal_target)} kcal).` : `All three meals logged and within your sins (${ev.used} of ${ev.avail}).`, quote: q(), cta: 'Nice one', confetti: 'small', theme: true };
+     case 'water': return { icon: '💧', anim: 'bounce', kicker: 'Water goal', title: 'Hydration hero!', sub: `${ev.target} glasses today — your body says thanks.`, cta: 'Cheers', confetti: 'small' };
+     case 'week': return { icon: '🥇', anim: 'bounce', kicker: 'Last week', title: 'Week won!', sub: `${ev.on_track_days} on-track days — your goal was ${ev.goal}.`, quote: q(), cta: 'Bring on this week', confetti: 'big', theme: true };
+     case 'month': return { icon: '👑', anim: 'spinin', kicker: monthName(ev.month), title: 'Month master!', sub: `${ev.on_track_days} on-track days in ${monthName(ev.month)}. That's a habit now.`, quote: q(), cta: 'Onwards', confetti: 'big', theme: true };
+@@ -1176,8 +1189,11 @@ function renderToday(){
+   const tot = es.reduce((a, e) => { ['kcal','protein','carbs','fat','points'].forEach(k => a[k] += +e[k] || 0); return a; }, {kcal:0,protein:0,carbs:0,fat:0,points:0});
+   const wb = weekBudget(S.week, s, {day: S.day, points: tot.points}), b = wb[S.day] || {avail: s.daily_points, carryIn: 0, left: s.daily_points - tot.points};
+   const dailyLeft = b.left, hasBonus = (+s.weekly_points || 0) > 0;
+-  const mode = s.track_mode || 'points';
++  const mode = dayMode(dd);
+   const kcalLeft = s.calorie_target - tot.kcal;
++  const modeSeg = `<div class="seg mode-seg" id="modeSeg" role="group" aria-label="What to count ${S.day === TODAY() ? 'today' : 'this day'}">
++      <button data-m="points" class="${mode !== 'calories' ? 'on' : ''}">😈 Count sins</button>
++      <button data-m="calories" class="${mode === 'calories' ? 'on' : ''}">🔥 Count calories</button></div>`;
+ 
+   let ring;
+   if (mode === 'calories') {
+@@ -1191,7 +1207,8 @@ function renderToday(){
+     : `<div class="hs"><div class="k">Used today</div><div class="v">${tot.points} <small>/ ${b.avail}</small></div></div>
+        ${hasBonus ? `<div class="hs flex"><div class="k">Bonus left</div><div class="v">${wb.bonusLeft} <small>/ ${s.weekly_points}</small></div></div>`
+          : `<div class="hs flex"><div class="k">Carried over</div><div class="v">+${b.carryIn} <small>sins</small></div></div>`}`;
+-  const kcalBar = mode === 'calories' ? `<div class="kcal-line"><span>Sins today</span><b>${tot.points} sins</b></div>` :
++  const held = b.carryHeld || 0;
++  const kcalBar = mode === 'calories' ? `<div class="kcal-line paused"><span>Sins paused${held ? ` · ${held} saved for your next sins day` : ''}</span><b>${tot.points} sins</b></div>` :
+     `<div class="kcal-line"><span>Calories</span><b>${fmt(tot.kcal)} <span>/ ${fmt(s.calorie_target)} kcal</span></b></div>
+      <div class="bar ${tot.kcal > s.calorie_target ? 'over':''}"><i style="width:${Math.min(100, tot.kcal / s.calorie_target * 100)}%"></i></div>`;
+   const macros = s.show_macros ? `<div class="macros">
+@@ -1206,18 +1223,18 @@ function renderToday(){
+     const list = es.filter(e => e.meal === m.id);
+     const mp = list.reduce((a, e) => a + (+e.points||0), 0), mk = list.reduce((a, e) => a + (+e.kcal||0), 0);
+     return `<section class="card">
+-      <div class="meal-h"><div class="meal-ic">${m.ic}</div><div class="t"><b>${m.name}</b><span>${list.length ? `${mp} sins · ${fmt(mk)} kcal` : 'Nothing yet'}</span></div>
++      <div class="meal-h"><div class="meal-ic">${m.ic}</div><div class="t"><b>${m.name}</b><span>${list.length ? (mode === 'calories' ? `${fmt(mk)} kcal` : `${mp} sins · ${fmt(mk)} kcal`) : 'Nothing yet'}</span></div>
+         <button class="more" data-copy="${m.id}" aria-label="Copy from yesterday" title="Copy from yesterday"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="3"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/></svg></button></div>
+       ${list.map(e => `<div class="entry" data-e="${e.id}">
+           <div class="n"><b>${esc(e.name)}</b><span>${esc(e.unit_label || (e.amount_g ? r0(e.amount_g)+' g' : 'Quick add'))}${e.brand ? ' · ' + esc(e.brand) : ''}</span></div>
+           <span class="kc">${fmt(e.kcal)} kcal</span>
+-          <span class="pill ${e.points == 0 ? 'zero' : ''}">${e.points}</span></div>`).join('')}
++          ${mode === 'calories' ? '' : `<span class="pill ${e.points == 0 ? 'zero' : ''}">${e.points}</span>`}</div>`).join('')}
+       <button class="add-row" data-add="${m.id}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add ${m.name.toLowerCase()}</button>
+     </section>`;
+   }).join('');
+ 
+   $('#view').innerHTML = `
+-    <section class="card hero-card"><div class="hero">${ring}<div class="hero-stats">${stats}</div></div>${kcalBar}${macros}</section>
++    <section class="card hero-card">${modeSeg}<div class="hero">${ring}<div class="hero-stats">${stats}</div></div>${kcalBar}${macros}</section>
+     ${S.day === TODAY() ? '<section class="card game-card" id="gameCard"></section>' : ''}
+     <section class="card"><h3>Water <span class="sub">${wn} of ${wt} glasses</span></h3><div class="water">${glasses}</div></section>
+     ${meals}`;
+@@ -1229,6 +1246,10 @@ function renderToday(){
+     await api('/water/' + S.day, {method:'PUT', body:{glasses: v}});
+     loadDay();
+   });
++  $('#modeSeg').querySelectorAll('[data-m]').forEach(b => b.onclick = async () => {
++    if (b.dataset.m === mode) return;
++    await setDayMode(S.day, b.dataset.m); loadDay();
++  });
+   $('#view').querySelectorAll('[data-add]').forEach(b => b.onclick = () => openAdd(b.dataset.add));
+   $('#view').querySelectorAll('[data-e]').forEach(b => b.onclick = () => openEntry(es.find(e => e.id == b.dataset.e)));
+   $('#view').querySelectorAll('[data-copy]').forEach(b => b.onclick = async () => {
+@@ -1547,13 +1568,19 @@ async function renderWeekTab(){
+   const wk = await api('/week/' + S.day); S.week = wk;
+   const s = S.settings, t = TODAY();
+   const wb = weekBudget(wk, s);
+-  const max = Math.max(s.daily_points * 1.6, ...wk.days.map(d => Math.max(d.points, wb[d.day].avail)));
+-  const total = wk.days.reduce((a, d) => a + d.points, 0), kc = wk.days.reduce((a, d) => a + d.kcal, 0);
++  // calorie days are drawn on the same scale: hitting the calorie target = a full day's sins
++  const asSins = d => dayMode(d) === 'calories' ? d.kcal / (+s.calorie_target || 1) * s.daily_points : d.points;
++  const max = Math.max(s.daily_points * 1.6, ...wk.days.map(d => Math.max(asSins(d), wb[d.day].avail)));
++  const sinDays = wk.days.filter(d => dayMode(d) !== 'calories'), calDays = wk.days.length - sinDays.length;
++  const total = sinDays.reduce((a, d) => a + d.points, 0), kc = wk.days.reduce((a, d) => a + d.kcal, 0);
+   const logged = wk.days.filter(d => d.points || d.kcal).length;
++  const kShort = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : r0(n);
+   const cols = wk.days.map(d => {
+-    const dt = parseISO(d.day), h = d.points / max * 100, line = s.daily_points / max * 100;
+-    const cls = !d.points && !d.kcal ? 'empty' : d.points > wb[d.day].avail ? 'over' : d.day === t ? 'today' : '';
+-    return `<div class="wd" data-d="${d.day}"><span class="num">${d.points || ''}</span><div class="col ${cls}" style="height:${Math.max(3, h)}%"></div><small>${dt.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</small></div>`;
++    const cal = dayMode(d) === 'calories', dt = parseISO(d.day), h = asSins(d) / max * 100;
++    const over = cal ? d.kcal > s.calorie_target : d.points > wb[d.day].avail;
++    const cls = !d.points && !d.kcal ? 'empty' : over ? 'over' : d.day === t ? 'today' : cal ? 'cal' : '';
++    const num = cal ? (d.kcal ? kShort(d.kcal) : '') : (d.points || '');
++    return `<div class="wd" data-d="${d.day}"><span class="num">${num}</span><div class="col ${cls}" style="height:${Math.max(3, h)}%"></div><small>${dt.toLocaleDateString('en-GB',{weekday:'short'}).slice(0,2)}</small></div>`;
+   }).join('');
+   const startD = parseISO(wk.start), endD = parseISO(addDays(wk.start, 6));
+   $('#view').innerHTML = `
+@@ -1561,8 +1588,8 @@ async function renderWeekTab(){
+       <div class="stat3"><div><b style="color:${wb.weekLeft < 0 ? 'var(--coral)' : 'inherit'}">${wb.weekLeft}</b><span>Left this week</span></div>
+       <div><b>${total}</b><span>Sins used</span></div><div><b>${logged ? fmt(kc / logged) : '–'}</b><span>Avg kcal/day</span></div></div>
+       <div class="week" style="margin-top:18px">${cols}</div>
+-      <div class="legend"><span><i style="background:var(--blue3)"></i>Within daily</span><span><i style="background:var(--sun)"></i>Over allowance</span><span><i style="background:var(--blue)"></i>Today</span></div>
+-      <p class="hint">${s.daily_points} sins a day (1 sin = ${kpp()} kcal).${s.carry_over !== false ? ' Sins you don\'t use roll over to the next day.' : ''}${(+s.weekly_points||0) > 0 ? ` Plus ${s.weekly_points} bonus sins for the week.` : ''} Everything resets every ${s.week_start == 0 ? 'Sunday' : 'Monday'}.</p>
++      <div class="legend"><span><i style="background:var(--blue3)"></i>Within daily</span><span><i style="background:var(--sun)"></i>Over allowance</span><span><i style="background:var(--blue)"></i>Today</span>${calDays ? '<span><i style="background:var(--mint)"></i>Calorie day</span>' : ''}</div>
++      <p class="hint">${s.daily_points} sins a day (1 sin = ${kpp()} kcal).${s.carry_over !== false ? ' Sins you don\'t use roll over to the next day.' : ''}${(+s.weekly_points||0) > 0 ? ` Plus ${s.weekly_points} bonus sins for the week.` : ''} Everything resets every ${s.week_start == 0 ? 'Sunday' : 'Monday'}.${calDays ? ` Calorie days count against ${fmt(s.calorie_target)} kcal instead and don't use any sins.` : ''}</p>
+     </section>
+     <div class="btn-row"><button class="btn sec" id="wPrev">‹ Previous week</button><button class="btn sec" id="wNext">Next week ›</button></div>`;
+   $('#view').querySelectorAll('.wd').forEach(d => d.onclick = () => { S.day = d.dataset.d; setTab('today'); });
+@@ -1665,9 +1692,10 @@ function renderSettings(){
+         : `<input id="gst" inputmode="numeric" value="${goalSt}" placeholder="st"><input id="glb" inputmode="decimal" value="${goalLb}" placeholder="lb">`}</div></div>
+     </section>
+     <section class="card"><h3>Your budget</h3>
+-      <div class="field" style="margin-top:0"><label>Main tracker</label><select id="sm">
+-        <option value="points" ${s.track_mode!=='calories'?'selected':''}>Sins (calories shown underneath)</option>
+-        <option value="calories" ${s.track_mode==='calories'?'selected':''}>Calories (sins shown underneath)</option></select></div>
++      <div class="field" style="margin-top:0"><label>Normally count</label><select id="sm">
++        <option value="points" ${s.track_mode!=='calories'?'selected':''}>Sins</option>
++        <option value="calories" ${s.track_mode==='calories'?'selected':''}>Calories</option></select></div>
++      <p class="hint">Switch any single day between sins and calories with the toggle at the top of the Today screen. Calorie days don't use sins — any carried-over sins wait for your next sins day.</p>
+       <div class="grid2"><div class="field"><label>Daily sins</label><input id="sdp" inputmode="numeric" value="${s.daily_points}"></div>
+       <div class="field"><label>Calories per sin</label><input id="skp" inputmode="numeric" value="${kpp()}"></div></div>
+       <div class="toggle" id="sco">Carry unused sins to the next day<span class="sw ${s.carry_over !== false ? 'on' : ''}"></span></div>
