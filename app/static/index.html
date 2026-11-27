@@ -16,7 +16,7 @@
 <title>MyTrack</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Creepster&family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Creepster&family=Mountains+of+Christmas:wght@700&family=Nunito:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 :root{
   --navy:#14164A; --ink:#2A2C5C; --muted:#7A7CA3; --line:#E4E5F3;
@@ -564,6 +564,163 @@ html[data-theme="bonfire"] .login::after{content:'';position:absolute;left:0;rig
 }
 
 /* =====================================================================
+   🎄  CHRISTMAS THEME  (auto 1 Dec – 6 Jan)
+   ===================================================================== */
+html[data-theme="christmas"]{
+  --navy:#F3F7F2; --ink:#E4ECE6; --muted:#8FA79A; --line:rgba(255,255,255,.08);
+  --blue:#E2394B; --blue2:#FF6B78; --blue3:#F3C64B; --sky:rgba(226,57,75,.13); --bg:#06110D; --card:#0D1F18;
+  --mint:#4FD68A; --mint-bg:rgba(79,214,138,.12); --coral:#FF5A66; --coral-bg:rgba(255,90,102,.14);
+  --sun:#F3C64B; --sun-bg:rgba(243,198,75,.14);
+  --ring1:#FFE7A3; --ring2:#E2394B; --ring-over:#9AD7FF; --ring-track:rgba(255,255,255,.07); --chart:#F3C64B;
+  --shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 32px rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+html[data-theme="christmas"] body{background:
+    radial-gradient(70% 40% at 12% -5%,rgba(79,214,138,.10),transparent 70%) fixed,
+    radial-gradient(60% 35% at 92% 0%,rgba(226,57,75,.10),transparent 70%) fixed,
+    radial-gradient(120% 40% at 50% 112%,rgba(200,225,255,.08),transparent 70%) fixed,
+    linear-gradient(180deg,#06110D,#081812) fixed,#06110D}
+html[data-theme="christmas"] ::selection{background:rgba(226,57,75,.4);color:#fff}
+html[data-theme="christmas"] .card h3,html[data-theme="christmas"] .sheet-h h2,html[data-theme="christmas"] .brand,html[data-theme="christmas"] .login-c h1,html[data-theme="christmas"] .xm-chip{
+  font-family:'Mountains of Christmas','Nunito',cursive;font-weight:700;letter-spacing:.6px}
+html[data-theme="christmas"] .card h3{font-size:22px;color:#F6D77A;text-shadow:0 0 12px rgba(243,198,75,.35)}
+html[data-theme="christmas"] .card h3 .sub{font-family:'Nunito',sans-serif;letter-spacing:0;text-shadow:none}
+html[data-theme="christmas"] .sheet-h h2{font-size:27px;color:#F6D77A}
+html[data-theme="christmas"] .brand{font-size:25px;color:#FFF1C4;text-shadow:0 0 14px rgba(243,198,75,.6)}
+html[data-theme="christmas"] .brand .dot{position:relative;background:#0D1F18;box-shadow:0 0 14px rgba(243,198,75,.55)}
+/* Santa hat on the logo */
+html[data-theme="christmas"] .brand .dot::after{content:'';position:absolute;left:-9px;top:-14px;width:28px;height:24px;transform:rotate(-22deg);pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'%3E%3Cpath d='M5 27C8 15 17 4 30 5C35 6 37 11 36 17C32 13 27 12 24 14C26 18 28 23 29 27Z' fill='%23E2394B'/%3E%3Crect x='2' y='25' width='30' height='7' rx='3.5' fill='%23F4F7FA'/%3E%3Ccircle cx='36.5' cy='18' r='3.6' fill='%23F4F7FA'/%3E%3C/svg%3E") no-repeat center/contain;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.5));animation:xmHat 4s ease-in-out infinite;transform-origin:70% 90%}
+@keyframes xmHat{0%,100%{transform:rotate(-22deg)}50%{transform:rotate(-13deg)}}
+
+/* snow caps on every card */
+html[data-theme="christmas"] .card{border:1px solid rgba(243,198,75,.08);position:relative}
+html[data-theme="christmas"] .card::after{content:'';position:absolute;top:-3px;left:14px;right:14px;height:11px;pointer-events:none;border-radius:6px 6px 0 0;
+  background:radial-gradient(circle at 9px -1px,#F4F8FB 8px,transparent 8.5px) 0 0/22px 11px repeat-x,linear-gradient(#F4F8FB,#F4F8FB) 0 0/100% 3px no-repeat;
+  opacity:.88;filter:drop-shadow(0 1px 1px rgba(160,200,230,.35))}
+/* holly sprig on the hero card */
+html[data-theme="christmas"] .hero-card::before{content:'';position:absolute;top:8px;right:10px;width:46px;height:40px;opacity:.9;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 40'%3E%3Cpath d='M22 22C16 12 6 14 2 8c2 6-1 9 1 13 3-2 6 0 7 3 2-2 6-2 7 1 1-2 3-3 5-3z' fill='%232E9A5B'/%3E%3Cpath d='M24 22c6-10 16-8 20-14-2 6 1 9-1 13-3-2-6 0-7 3-2-2-6-2-7 1-1-2-3-3-5-3z' fill='%23247A48'/%3E%3Ccircle cx='19' cy='26' r='4' fill='%23E2394B'/%3E%3Ccircle cx='27' cy='26' r='4' fill='%23C92B3C'/%3E%3Ccircle cx='23' cy='32' r='4' fill='%23E2394B'/%3E%3Ccircle cx='17.6' cy='24.6' r='1.2' fill='%23fff' opacity='.7'/%3E%3C/svg%3E") no-repeat center/contain}
+
+/* header: frosty night, moon, stars, fairy lights, sleigh */
+html[data-theme="christmas"] .top{background:
+    radial-gradient(1.5px 1.5px at 10% 28%,#fff9 50%,transparent 51%),radial-gradient(1px 1px at 26% 72%,#fff7 50%,transparent 51%),
+    radial-gradient(1.5px 1.5px at 45% 16%,#fffa 50%,transparent 51%),radial-gradient(1px 1px at 63% 58%,#fff6 50%,transparent 51%),
+    radial-gradient(1px 1px at 80% 24%,#fff8 50%,transparent 51%),radial-gradient(1.5px 1.5px at 94% 66%,#fff8 50%,transparent 51%),
+    linear-gradient(165deg,#071A24 0%,#0B2A2A 55%,#123A2C 100%);
+  box-shadow:0 10px 30px rgba(0,0,0,.55),0 1px 0 rgba(243,198,75,.22) inset}
+html[data-theme="christmas"] .top>*{position:relative;z-index:1}
+html[data-theme="christmas"] .hello{text-shadow:0 1px 3px #000}
+html[data-theme="christmas"] .datenav{background:rgba(0,0,0,.28);box-shadow:0 0 0 1px rgba(243,198,75,.18) inset}
+.xm-sky{position:absolute!important;inset:0;overflow:hidden;border-radius:0 0 28px 28px;pointer-events:none;z-index:0!important}
+.xm-sleigh{position:absolute;left:-140px;top:calc(1px + var(--safe-t));width:104px;fill:#F6D77A;opacity:0;filter:drop-shadow(0 0 4px rgba(243,198,75,.7));animation:sleigh 24s linear infinite;animation-delay:3s}
+@keyframes sleigh{0%{transform:translate(0,14px);opacity:0}3%{opacity:.6}22%{transform:translate(55vw,-4px)}40%{transform:translate(calc(100vw + 160px),-10px);opacity:.6}41%,100%{transform:translate(calc(100vw + 160px),-10px);opacity:0}}
+.xm-lights{position:absolute!important;left:0;right:0;bottom:-15px;height:22px;pointer-events:none;z-index:2!important;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='14'%3E%3Cpath d='M0 2 Q24 16 48 2' fill='none' stroke='%23243A2E' stroke-width='1.6'/%3E%3C/svg%3E") repeat-x 0 0}
+.xm-bulb{position:absolute;top:8px;width:7px;height:11px;margin-left:-3.5px;border-radius:50% 50% 50% 50%/40% 40% 60% 60%;
+  background:var(--c);box-shadow:0 0 6px 1px var(--c),0 0 14px 2px var(--c);animation:xmTwinkle var(--d,2.4s) ease-in-out infinite;animation-delay:var(--o,0s)}
+.xm-bulb::before{content:'';position:absolute;top:-3px;left:1.5px;width:4px;height:4px;border-radius:1px;background:#3B4A42}
+@keyframes xmTwinkle{0%,100%{opacity:1;filter:brightness(1.15)}45%{opacity:.35;filter:brightness(.7)}}
+/* "sleeps to go" chip */
+.xm-chip{display:inline-flex;align-items:center;gap:5px;margin-top:5px;padding:2px 11px;border-radius:99px;font-size:15px;line-height:1.3;white-space:nowrap;color:#FFF1C4;cursor:pointer;
+  background:linear-gradient(135deg,rgba(226,57,75,.30),rgba(79,214,138,.18));border:1px solid rgba(243,198,75,.32);box-shadow:0 0 12px rgba(226,57,75,.2)}
+.xm-chip:active{transform:scale(.97)}
+
+html[data-theme="christmas"] .top-row.xm-row{flex-wrap:wrap;row-gap:0}
+html[data-theme="christmas"] .xm-row .xm-chip{margin-left:auto}
+#snow{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:21}
+
+html[data-theme="christmas"] .ring svg{filter:drop-shadow(0 0 10px rgba(243,198,75,.45))}
+html[data-theme="christmas"] .ring .big{color:#FFF1C4;text-shadow:0 0 18px rgba(243,198,75,.7)}
+html[data-theme="christmas"] .ring.cursed svg{filter:drop-shadow(0 0 14px rgba(154,215,255,.85));animation:frost 2s ease-in-out infinite}
+html[data-theme="christmas"] .ring.cursed .big{color:#BFE6FF;text-shadow:0 0 20px rgba(154,215,255,.9)}
+@keyframes frost{0%,100%{filter:drop-shadow(0 0 8px rgba(154,215,255,.6))}50%{filter:drop-shadow(0 0 22px rgba(200,235,255,1))}}
+html[data-theme="christmas"] .hs{background:rgba(226,57,75,.10)}
+html[data-theme="christmas"] .hs.flex{background:rgba(79,214,138,.12)}
+/* candy-cane progress bars */
+html[data-theme="christmas"] .bar>i{background:repeating-linear-gradient(135deg,#E2394B 0 7px,#FFF4F0 7px 12px);background-size:200% 100%;box-shadow:0 0 10px rgba(226,57,75,.5);animation:xmCane 3s linear infinite}
+html[data-theme="christmas"] .bar.over>i{background:repeating-linear-gradient(135deg,#7FC4F0 0 7px,#E8F6FF 7px 12px);background-size:200% 100%}
+@keyframes xmCane{to{background-position:-34px 0}}
+
+/* frosted glasses */
+html[data-theme="christmas"] .glass{background:rgba(255,255,255,.04);border-color:rgba(200,230,255,.55);overflow:visible}
+html[data-theme="christmas"] .glass.full::after{border-radius:0 0 9px 9px;background:linear-gradient(180deg,#CFEAFF,#6DB6F2);box-shadow:0 0 10px rgba(154,215,255,.45)}
+html[data-theme="christmas"] .glass::before{content:'';position:absolute;z-index:2;left:-3px;right:-3px;top:-4px;height:8px;border-radius:5px 5px 3px 3px;
+  background:radial-gradient(circle at 4px 6px,#F4F8FB 3px,transparent 3.5px) 0 0/8px 9px repeat-x,linear-gradient(#F4F8FB,#F4F8FB) 0 0/100% 4px no-repeat;opacity:.9}
+html[data-theme="christmas"] .glass.add::before{opacity:.35}
+html[data-theme="christmas"] .glass.add{color:#F6D77A;border-color:rgba(243,198,75,.45)}
+
+/* bauble pills, buttons */
+html[data-theme="christmas"] .pill{background:radial-gradient(circle at 35% 30%,#FF8A95,#E2394B 55%,#A81E2E);box-shadow:0 0 10px rgba(226,57,75,.45);color:#fff}
+html[data-theme="christmas"] .pill.zero{background:radial-gradient(circle at 35% 30%,#9BF0BE,#2EAA62 60%,#1B7A44);box-shadow:0 0 10px rgba(79,214,138,.45);color:#04190D}
+html[data-theme="christmas"] .btn{background:linear-gradient(135deg,#B8303C,#E2394B 45%,#F3C64B);color:#fff;text-shadow:0 1px 0 rgba(0,0,0,.25);box-shadow:0 8px 22px rgba(226,57,75,.35),0 0 0 1px rgba(255,230,160,.25) inset}
+html[data-theme="christmas"] .seg button.on{background:linear-gradient(135deg,#C9303F,#E2394B);color:#fff}
+html[data-theme="christmas"] .chip.on{color:#fff}
+html[data-theme="christmas"] :is(.search,.food,.quick button,.x,.meal-pick button,.toggle,.btn.sec,.btn.danger,.amt,.fd-points,.seg,.field input,.field select,.amt input){background:var(--card);color:var(--navy)}
+html[data-theme="christmas"] :is(.field input,.field select,.amt input,.toggle){border-color:rgba(255,255,255,.1)}
+html[data-theme="christmas"] .field input::-webkit-calendar-picker-indicator{filter:invert(1)}
+html[data-theme="christmas"] .btn.sec{color:#F6D77A;text-shadow:none}
+html[data-theme="christmas"] .btn.danger{text-shadow:none}
+html[data-theme="christmas"] .fd-points .pbig{background:radial-gradient(circle at 35% 30%,#FF9AA3,#E2394B 50%,#9C1A2A 90%);color:#fff;box-shadow:0 0 24px rgba(226,57,75,.55)}
+html[data-theme="christmas"] .fd-points .pbig.zero{background:radial-gradient(circle at 35% 30%,#C9FFE0,#2EAA62 70%);color:#04190D;box-shadow:0 0 22px rgba(79,214,138,.5)}
+html[data-theme="christmas"] .meal-ic{background:rgba(79,214,138,.13)}
+html[data-theme="christmas"] .add-row{border-color:rgba(243,198,75,.25)}
+html[data-theme="christmas"] .toast{background:#0F2A20;color:#FFF1C4;box-shadow:0 0 0 1px rgba(243,198,75,.4),0 0 24px rgba(226,57,75,.3)}
+html[data-theme="christmas"] .sheet{background:linear-gradient(180deg,#0E2219,#06110D 40%);box-shadow:0 -10px 40px rgba(0,0,0,.6),0 -1px 0 rgba(243,198,75,.3)}
+html[data-theme="christmas"] .grab{background:rgba(243,198,75,.35)}
+html[data-theme="christmas"] .scan-frame .laser{background:#E2394B;box-shadow:0 0 14px #E2394B}
+html[data-theme="christmas"] .wd .col.today,html[data-theme="christmas"] .kbars .kb.today{background:linear-gradient(#F3C64B,#E2394B);box-shadow:0 0 14px rgba(243,198,75,.45)}
+html[data-theme="christmas"] .wd .col.over,html[data-theme="christmas"] .kbars .kb.over{background:linear-gradient(#BFE6FF,#4C98D8);box-shadow:0 0 14px rgba(154,215,255,.45)}
+html[data-theme="christmas"] .badge{background:rgba(79,214,138,.12);color:var(--mint)}
+html[data-theme="christmas"] .tag{background:rgba(243,198,75,.15);color:#F6D77A}
+html[data-theme="christmas"] .spin{border-color:rgba(255,255,255,.08);border-top-color:#E2394B}
+
+/* nav with a snowy edge + bauble FAB */
+html[data-theme="christmas"] .nav{background:rgba(6,17,13,.94);border-top:1px solid rgba(243,198,75,.18)}
+html[data-theme="christmas"] .nav::before{content:'';position:absolute;left:0;right:0;top:-6px;height:9px;pointer-events:none;
+  background:radial-gradient(circle at 8px 9px,#EEF4F8 7px,transparent 7.5px) 0 0/19px 10px repeat-x;opacity:.75}
+html[data-theme="christmas"] .nav button.on{color:#F6D77A;text-shadow:0 0 10px rgba(243,198,75,.6)}
+html[data-theme="christmas"] .nav .fab{position:relative;color:#fff;background:radial-gradient(circle at 34% 28%,#FFB3BA 0%,#FF5A68 22%,#E2394B 52%,#8F1626 100%);
+  box-shadow:0 0 0 3px #06110D,0 0 24px rgba(226,57,75,.75);animation:bauble 3.4s ease-in-out infinite;transform-origin:50% -14px}
+html[data-theme="christmas"] .nav .fab::before{content:'';position:absolute;top:-5px;left:50%;width:20px;height:7px;margin-left:-10px;border-radius:2px 2px 4px 4px;
+  background:repeating-linear-gradient(90deg,#B88E2B 0 2px,#F6D77A 2px 5px);box-shadow:0 1px 2px rgba(0,0,0,.4)}
+html[data-theme="christmas"] .nav .fab::after{content:'';position:absolute;top:-11px;left:50%;width:6px;height:6px;margin-left:-4.5px;border:1.5px solid #E2C266;border-radius:50%}
+@keyframes bauble{0%,100%{transform:rotate(-4deg);box-shadow:0 0 0 3px #06110D,0 0 18px rgba(226,57,75,.6)}50%{transform:rotate(4deg);box-shadow:0 0 0 3px #06110D,0 0 32px rgba(243,198,75,.85)}}
+
+/* gift + snowflake burst when food is logged */
+.xburst{position:fixed;z-index:70;font-size:26px;line-height:1;pointer-events:none;filter:drop-shadow(0 0 8px rgba(243,198,75,.7))}
+
+/* login: snowy night with a lit tree */
+html[data-theme="christmas"] .login{background:
+    radial-gradient(circle at 80% 13%,#F4F9FF 0 30px,rgba(220,235,255,.22) 32px,transparent 100px),
+    radial-gradient(1.5px 1.5px at 15% 20%,#fff9 50%,transparent 51%),radial-gradient(1px 1px at 35% 12%,#fff8 50%,transparent 51%),
+    radial-gradient(1.5px 1.5px at 60% 30%,#fff7 50%,transparent 51%),radial-gradient(1px 1px at 90% 42%,#fff8 50%,transparent 51%),
+    radial-gradient(1px 1px at 8% 55%,#fff6 50%,transparent 51%),
+    linear-gradient(180deg,#051520 0%,#0A2A2A 55%,#0D2E22 100%)}
+html[data-theme="christmas"] .login-c{position:relative;z-index:2}
+html[data-theme="christmas"] .login-c h1{font-size:50px;color:#F6D77A;text-shadow:0 0 22px rgba(243,198,75,.7),0 0 40px rgba(226,57,75,.25)}
+html[data-theme="christmas"] #whoStage h1::after{content:'❄  Merry Christmas  ❄';display:block;font-family:'Nunito',sans-serif;font-size:12px;font-weight:900;letter-spacing:3px;
+  text-transform:uppercase;color:#CFE3F2;text-shadow:0 0 10px rgba(200,230,255,.4);margin-top:2px}
+html[data-theme="christmas"] .login .logo{background:#0D1F18;box-shadow:0 0 30px rgba(243,198,75,.55)}
+html[data-theme="christmas"] .who button,html[data-theme="christmas"] .pad button{background:rgba(255,255,255,.07);box-shadow:0 0 0 1px rgba(243,198,75,.18) inset}
+html[data-theme="christmas"] .pin i{border-color:#F6D77A}
+html[data-theme="christmas"] .pin i.f{background:#E2394B;border-color:#E2394B;box-shadow:0 0 10px #E2394B}
+html[data-theme="christmas"] .login::after{content:'';position:absolute;left:0;right:0;bottom:0;height:80px;pointer-events:none;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 80' preserveAspectRatio='none'%3E%3Cpath fill='%23DCE8F0' opacity='.22' d='M0 50C40 36 90 44 140 40S240 26 300 36 370 44 400 38V80H0Z'/%3E%3Cpath fill='%23EEF4F8' opacity='.34' d='M0 62C60 52 120 60 190 56S300 48 400 58V80H0Z'/%3E%3C/svg%3E") bottom/100% 100% no-repeat}
+.xm-tree{position:absolute;left:18px;bottom:14px;width:92px;height:130px;pointer-events:none;z-index:1;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5))}
+.xm-tree svg{display:block;width:100%;height:100%;overflow:visible}
+.xm-bauble{animation:xmTwinkle 2.6s ease-in-out infinite}
+.xm-star{transform-box:fill-box;transform-origin:center;animation:xmStar 3s ease-in-out infinite}
+@keyframes xmStar{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.18) rotate(12deg)}}
+@media (max-height:720px){.xm-tree{display:none}}
+
+@media (prefers-reduced-motion: reduce){
+  #snow,.xm-sleigh{display:none}
+  html[data-theme="christmas"] *,html[data-theme="christmas"] *::before,html[data-theme="christmas"] *::after{animation:none!important}
+}
+
+/* =====================================================================
    🏆  GAMIFICATION: streak card, celebrations, badges
    ===================================================================== */
 .game-card .g-top{display:flex;align-items:center;gap:12px}
@@ -761,6 +918,10 @@ const FIREWORK = size => { const cols = ['#FFD166','#FF5A5F','#3DFF8F','#4DA8FF'
   const rays = cols.map((c, i) => { const a = i * Math.PI / 4, x1 = 16 + Math.cos(a) * 5, y1 = 16 + Math.sin(a) * 5, x2 = 16 + Math.cos(a) * 12.5, y2 = 16 + Math.sin(a) * 12.5;
     return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${c}"/><circle cx="${(16 + Math.cos(a) * 14.5).toFixed(1)}" cy="${(16 + Math.sin(a) * 14.5).toFixed(1)}" r="1.4" fill="${c}"/>`; }).join('');
   return `<svg width="${size}" height="${size}" viewBox="0 0 32 32"><g stroke-width="2.4" stroke-linecap="round">${rays}</g><circle cx="16" cy="16" r="3.2" fill="#FFF3C4"/></svg>`; };
+const XMAS_TREE = size => `<svg width="${size}" height="${size}" viewBox="0 0 32 32"><path d="M16 5L9 14h3l-5 7h4l-6 7h22l-6-7h4l-5-7h3z" fill="#2E9A5B"/>
+  <rect x="14" y="27" width="4" height="4" rx="1" fill="#7A4A2A"/><circle cx="13" cy="15" r="1.4" fill="#E2394B"/><circle cx="19" cy="19" r="1.4" fill="#F3C64B"/>
+  <circle cx="12" cy="23" r="1.4" fill="#58B4FF"/><circle cx="20" cy="25" r="1.4" fill="#E2394B"/><path d="M16 1.5l1.2 2.6 2.8.3-2.1 1.9.6 2.8L16 7.7l-2.5 1.4.6-2.8-2.1-1.9 2.8-.3z" fill="#F6D77A"/></svg>`;
+
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const THEMES = {
   classic: { meals: ['🍳','🥗','🍝','🍎'], meta: '#2E31B7' },
@@ -774,10 +935,19 @@ const THEMES = {
     toast: ['🎆','🎇','✨','🔥','🧨'], over: 'sins over<br>💥 kaboom',
     greet: (h, d) => (d.getMonth() === 10 && d.getDate() === 5 ? 'Remember, remember' : h < 12 ? 'Crisp morning' : h < 18 ? 'Cosy afternoon' : 'Sparkling evening'), emoji: '🎆',
     decor: decorBonfire, celebrate: fireworkShow },
+  christmas: {
+    meals: ['☕','🥪','🦃','🍪'], meta: '#071A24', logo: XMAS_TREE, who: "Who's on the nice list?",
+    toast: ['🎄','🎅','⛄','🎁','❄️','⭐'], over: 'sins over<br>🎅 naughty list',
+    greet: (h, d) => { const m = d.getMonth(), day = d.getDate();
+      if (m === 11 && day === 25) return 'Merry Christmas'; if (m === 11 && day === 24) return 'Happy Christmas Eve';
+      if (m === 0 && day === 1) return 'Happy New Year';
+      return h < 12 ? 'Frosty morning' : h < 18 ? 'Festive afternoon' : 'Cosy evening'; }, emoji: '🎄',
+    decor: decorChristmas, celebrate: giftBurst },
 };
 function seasonal(){ const d = new Date(), m = d.getMonth(), day = d.getDate();
   if ((m === 9 && day >= 20) || (m === 10 && day <= 1)) return 'halloween';
   if (m === 10 && day >= 2 && day <= 8) return 'bonfire';
+  if (m === 11 || (m === 0 && day <= 6)) return 'christmas';
   return 'classic'; }
 function resolveTheme(pref){ return pref && pref !== 'auto' && THEMES[pref] ? pref : seasonal(); }
 function themeCfg(){ return THEMES[document.documentElement.dataset.theme] || THEMES.classic; }
@@ -793,7 +963,7 @@ function applyTheme(pref){
   if ($('#loginLogo')) $('#loginLogo').innerHTML = LOGO(48);
   $('#whoTitle') && ($('#whoTitle').textContent = cfg.who || "Who's tracking?");
   // tear down any previous decoration
-  $('#spook')?.remove(); document.querySelector('.hbats')?.remove(); document.querySelectorAll('.bonfire').forEach(e => e.remove()); FX.stop();
+  $('#spook')?.remove(); document.querySelector('.hbats')?.remove(); document.querySelectorAll('.bonfire,.xm').forEach(e => e.remove()); $('.top-row')?.classList.remove('xm-row'); FX.stop(); SNOW.stop();
   if (cfg.decor) cfg.decor();
 }
 function celebrate(){ const c = themeCfg().celebrate; if (c && !reducedMotion()) c(); }
@@ -897,6 +1067,118 @@ function fireworkShow(){
   FX.launch(r.left + r.width / 2, innerHeight * .28, r.top);
   setTimeout(() => FX.burst(innerWidth * (.2 + Math.random() * .2), innerHeight * (.18 + Math.random() * .15), true), 260);
   setTimeout(() => FX.burst(innerWidth * (.6 + Math.random() * .2), innerHeight * (.22 + Math.random() * .15), true), 520);
+}
+/* ---------- Christmas decor: snowfall, fairy lights, sleigh, lit tree ---------- */
+const XM_BULBS = ['#FF4D5E','#F3C84B','#4FE08F','#58B4FF','#FFF4D6'];
+const XM_LOGIN_TREE = '<svg viewBox="0 0 92 130">'
+  + '<defs><linearGradient id="xmT" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2F8F5B"/><stop offset="1" stop-color="#14402A"/></linearGradient></defs>'
+  + '<ellipse cx="46" cy="124" rx="40" ry="6" fill="rgba(244,247,250,0.55)"/><rect x="40" y="108" width="12" height="16" rx="2" fill="#4A2E1C"/>'
+  + '<path d="M46 14L22 52H32L14 82H28L6 112H86L64 82H78L60 52H70Z" fill="url(#xmT)"/>'
+  + '<path d="M28 54Q46 64 66 50M20 84Q46 96 74 80" fill="none" stroke="#F3C64B" stroke-width="1.4" stroke-opacity="0.7"/>'
+  + '<circle class="xm-bauble" cx="34" cy="60" r="3.4" fill="#E2394B"/><circle class="xm-bauble" cx="58" cy="56" r="3" fill="#F3C64B" style="animation-delay:-.8s"/>'
+  + '<circle class="xm-bauble" cx="46" cy="74" r="3.2" fill="#7FC8FF" style="animation-delay:-1.4s"/><circle class="xm-bauble" cx="26" cy="92" r="3.4" fill="#F3C64B" style="animation-delay:-.4s"/>'
+  + '<circle class="xm-bauble" cx="62" cy="90" r="3.6" fill="#E2394B" style="animation-delay:-2s"/><circle class="xm-bauble" cx="44" cy="100" r="3" fill="#F4F7FA" style="animation-delay:-1.1s"/>'
+  + '<path class="xm-star" d="M46 2L49 10L57 10L51 15L53 23L46 18L39 23L41 15L35 10L43 10Z" fill="#F3DD9A" style="filter:drop-shadow(0 0 6px rgba(243,221,154,0.9))"/></svg>';
+// Santa's sleigh + two reindeer, flying right (silhouette)
+const XM_SLEIGH = '<svg viewBox="0 0 150 40"><g>'
+  + '<path d="M4 30c4 6 30 6 44 2l2 3c-14 5-42 5-48-3z"/>'                                  // runner
+  + '<path d="M8 28c0-8 2-14 6-16h20c2 0 3 2 2 4l-3 8c-1 3-3 5-6 5H12c-3 0-4-0-4-1z"/>'     // sleigh body
+  + '<path d="M14 12c-1-6 3-9 7-9s7 3 6 9z"/><circle cx="21" cy="4" r="2.4"/>'               // santa + hat bobble
+  + '<path d="M2 14c1-5 5-7 9-5l1 6z"/>'                                                     // sack
+  + '<path d="M36 20L64 16M36 22L104 16" stroke="#F6D77A" stroke-width="1" fill="none"/>'   // reins
+  + '<path d="M60 22c2-5 9-6 14-5l5-5 2 1-3 5 1 3-2 1-1-2c-3 1-6 1-8 1l-2 6-2-.5 1-5-3 .5-1 5-2-.5 1-5z"/><path d="M77 11l-2-5M78 11l3-5M76 6l-2-1M81 6l2-1" stroke="#F6D77A" stroke-width="1.2" fill="none"/>'
+  + '<path d="M98 20c2-5 9-6 14-5l5-5 2 1-3 5 1 3-2 1-1-2c-3 1-6 1-8 1l-2 6-2-.5 1-5-3 .5-1 5-2-.5 1-5z"/><path d="M115 9l-2-5M116 9l3-5M114 4l-2-1M119 4l2-1" stroke="#F6D77A" stroke-width="1.2" fill="none"/>'
+  + '<circle cx="119.5" cy="12" r="1.6" fill="#FF4D5E" style="filter:drop-shadow(0 0 3px #FF4D5E)"/>'  // Rudolph's nose
+  + '</g></svg>';
+function xmSleeps(){
+  const d = new Date(); d.setHours(0, 0, 0, 0);
+  const m = d.getMonth(), day = d.getDate();
+  if (m === 11 && day === 25) return '🎅 Merry Christmas!';
+  if (m === 11 && day === 24) return '🎁 1 sleep to go!';
+  if (m === 11 && day < 24) return `🎄 ${Math.round((new Date(d.getFullYear(), 11, 25) - d) / 864e5)} sleeps to go`;
+  if (m === 0 && day === 1) return '🥂 Happy New Year!';
+  return '✨ Happy holidays';
+}
+
+const SNOW = {
+  c: null, ctx: null, flakes: [], raf: 0, last: 0, t: 0, W: 0, H: 0,
+  start(){
+    if (this.c || reducedMotion()) return;
+    const c = document.createElement('canvas'); c.id = 'snow'; document.body.appendChild(c);
+    this.c = c; this.ctx = c.getContext('2d'); this.resize();
+    this._r = () => this.resize(); addEventListener('resize', this._r);
+    this._click = e => this.onClick(e); document.addEventListener('click', this._click);
+    this.last = performance.now();
+    const loop = t => { this.raf = requestAnimationFrame(loop); this.frame(t); }; this.raf = requestAnimationFrame(loop);
+  },
+  stop(){ cancelAnimationFrame(this.raf); if (this._r) removeEventListener('resize', this._r); if (this._click) document.removeEventListener('click', this._click);
+    this.c?.remove(); this.c = null; this.flakes = []; },
+  resize(){ const d = Math.min(2, devicePixelRatio || 1); this.W = innerWidth; this.H = innerHeight;
+    this.c.width = this.W * d; this.c.height = this.H * d; this.ctx.setTransform(d, 0, 0, d, 0, 0); xmHangLights(); },
+  target(){ const d = new Date(), xday = d.getMonth() === 11 && d.getDate() === 25;
+    const login = !$('#login').classList.contains('hidden');
+    let n = Math.round(Math.min(this.W * this.H / 9000, 150)) * (login ? 1.3 : .75);
+    return Math.round(xday ? n * 1.6 : n); },
+  flake(top, x, y, burst){ const z = Math.random(), r = (a, b) => a + Math.random() * (b - a);
+    return { x: x ?? r(0, this.W), y: y ?? (top ? r(-this.H, 0) : r(0, this.H)), r: .6 + z * 2, vy: 18 + z * 46,
+      vx: burst ? r(-160, 160) : 0, by: burst ? r(-200, -50) : 0, sway: r(0, 6.28), sw: r(.4, 1.2), amp: 8 + z * 22, a: .35 + z * .55, life: burst ? r(2.5, 4.5) : -1 }; },
+  flurry(x, y, n = 50){ if (!this.c) return; for (let i = 0; i < n; i++) this.flakes.push(this.flake(false, x + Math.random() * 16 - 8, y + Math.random() * 16 - 8, true)); },
+  onClick(e){
+    if (e.button !== 0 || e.target.closest('button,a,input,select,textarea,label,.card,.sheet,.nav,.top,.who,.pad,.cel')) return;
+    this.flurry(e.clientX, e.clientY, 60);
+  },
+  frame(t){
+    const ctx = this.ctx, dt = Math.min(.05, (t - this.last) / 1000 || .016); this.last = t; this.t += dt;
+    this.c.style.zIndex = $('#login').classList.contains('hidden') ? 21 : 95;
+    if (document.hidden) return;
+    const wind = Math.sin(this.t * .15) * 14 + Math.sin(this.t * .043) * 10, W = this.W, H = this.H;
+    while (this.flakes.length < this.target()) this.flakes.push(this.flake(true));
+    ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#F4F8FB';
+    for (let i = this.flakes.length - 1; i >= 0; i--) {
+      const f = this.flakes[i]; f.sway += f.sw * dt;
+      if (f.life > 0) { f.life -= dt; f.vx *= Math.pow(.12, dt); f.by *= Math.pow(.2, dt); if (f.life <= 0) { this.flakes.splice(i, 1); continue; } }
+      f.y += (f.vy + f.by) * dt; f.x += (wind * (f.r / 3) + f.vx) * dt + Math.cos(f.sway) * f.amp * dt;
+      if (f.y > H + 6) { if (f.life > 0) { this.flakes.splice(i, 1); continue; } this.flakes[i] = this.flake(true); this.flakes[i].y = -6; continue; }
+      if (f.x < -10) f.x = W + 8; else if (f.x > W + 10) f.x = -8;
+      const a = f.life > 0 ? Math.min(1, f.life) * f.a : f.a;
+      ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, 6.283); ctx.fill();
+    }
+    // keep it light: drop surplus burst flakes if the count runs away
+    if (this.flakes.length > 600) this.flakes.splice(0, this.flakes.length - 600);
+    ctx.globalAlpha = 1;
+  },
+};
+function xmHangLights(){
+  const l = $('.xm-lights'); if (!l) return;
+  const n = Math.ceil((l.offsetWidth || innerWidth) / 48);
+  l.innerHTML = Array.from({length: n}, (_, i) => `<span class="xm-bulb" style="left:${i * 48 + 24}px;--c:${XM_BULBS[i % XM_BULBS.length]};--d:${(1.8 + (i * 37 % 13) / 10).toFixed(1)}s;--o:-${((i * 53 % 29) / 10).toFixed(1)}s"></span>`).join('');
+}
+function decorChristmas(){
+  const top = $('.top');
+  const sky = document.createElement('div'); sky.className = 'xm-sky xm'; sky.innerHTML = `<div class="xm-sleigh">${XM_SLEIGH}</div>`; top.prepend(sky);
+  const lights = document.createElement('div'); lights.className = 'xm-lights xm'; top.appendChild(lights); xmHangLights();
+  const chip = document.createElement('button'); chip.className = 'xm-chip xm'; chip.textContent = xmSleeps();
+  chip.onclick = () => { const r = chip.getBoundingClientRect(); SNOW.flurry(r.left + r.width / 2, r.bottom, 90); };
+  $('#hello').after(chip); $('.top-row').classList.add('xm-row');
+  const sp = document.createElement('div'); sp.id = 'spook'; document.body.appendChild(sp);   // marker so applyTheme knows decor is up
+  const tree = document.createElement('div'); tree.className = 'xm-tree xm'; tree.innerHTML = XM_LOGIN_TREE; $('#login').appendChild(tree);
+  if (!$('#xmFont')) { const f = document.createElement('link'); f.id = 'xmFont'; f.rel = 'stylesheet';
+    f.href = 'https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&display=swap'; document.head.appendChild(f); }
+  SNOW.start();
+  if (!reducedMotion()) setTimeout(() => SNOW.flurry(innerWidth / 2, 70, 80), 400);
+}
+function giftBurst(){
+  const r = $('#fab').getBoundingClientRect(), cx = r.left + r.width / 2 - 13, cy = r.top;
+  SNOW.flurry(cx + 13, cy, 70);
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement('div'); b.className = 'xburst'; b.textContent = pick(['🎁','🎁','⭐','❄️','🍬','🔔','🎄']);
+    b.style.left = cx + 'px'; b.style.top = cy + 'px'; b.style.fontSize = (20 + Math.random() * 18) + 'px';
+    document.body.appendChild(b);
+    const a = (-150 + Math.random() * 120) * Math.PI / 180, dist = 220 + Math.random() * 300, dx = Math.cos(a) * dist, dy = Math.sin(a) * dist;
+    b.animate([{transform:'translate(0,0) scale(.3)', opacity:0},{transform:`translate(${dx*.35}px,${dy*.35}px) scale(1.1)`, opacity:1, offset:.25},
+               {transform:`translate(${dx}px,${dy + 120}px) scale(.8) rotate(${Math.random()*80-40}deg)`, opacity:0}],
+              {duration: 1300 + Math.random() * 700, easing:'cubic-bezier(.2,.7,.4,1)'}).onfinish = () => b.remove();
+  }
 }
 
 
@@ -1809,10 +2091,11 @@ function renderSettings(){
     <section class="card"><h3>About you</h3>
       <div class="field" style="margin-top:0"><label>Your name</label><input id="sn" value="${esc(s.name || '')}" placeholder="Shown on the sign-in screen"></div>
       <div class="field"><label>Theme</label><select id="sth">
-        <option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Auto — seasonal 🎃🎆</option>
+        <option value="auto" ${(s.theme || 'auto') === 'auto' ? 'selected' : ''}>Auto — seasonal 🎃🎆🎄</option>
         <option value="classic" ${s.theme === 'classic' ? 'selected' : ''}>Classic</option>
         <option value="halloween" ${s.theme === 'halloween' ? 'selected' : ''}>Halloween</option>
-        <option value="bonfire" ${s.theme === 'bonfire' ? 'selected' : ''}>Bonfire Night</option></select></div>
+        <option value="bonfire" ${s.theme === 'bonfire' ? 'selected' : ''}>Bonfire Night</option>
+        <option value="christmas" ${s.theme === 'christmas' ? 'selected' : ''}>Christmas</option></select></div>
       <div class="toggle" id="scel" style="margin-top:12px">Celebrations &amp; daily quotes<span class="sw ${s.celebrations !== false ? 'on' : ''}"></span></div>
       <div class="field"><label>Weigh in using</label><select id="su"><option value="st" ${s.weight_unit!=='kg'?'selected':''}>Stones & pounds</option><option value="kg" ${s.weight_unit==='kg'?'selected':''}>Kilograms</option></select></div>
       <div class="field"><label>Goal weight</label><div class="grid2" id="goalBox">${s.weight_unit === 'kg'

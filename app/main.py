@@ -51,7 +51,7 @@ DEFAULT_SETTINGS = {
     "notify": {"morning": {"on": True, "time": "08:00"}, "water": {"on": True, "time": "15:00"},
                "streak": {"on": True, "time": "19:00"}},
     "notify_sent": {},
-    "theme": "auto",          # auto (seasonal) | classic | halloween | bonfire
+    "theme": "auto",          # auto (seasonal) | classic | halloween | bonfire | christmas
     "week_start": 1,          # 0=Sun, 1=Mon
     "weight_unit": "st",      # st | kg
     "goal_weight_kg": None,
