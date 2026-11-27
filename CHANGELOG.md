@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/kevmasonk1/mytrack/compare/mytrack-v1.0.0...mytrack-v1.1.0) (2026-11-27)
+
+
+### Features
+
+* add Christmas theme ([c24df60](https://github.com/kevmasonk1/mytrack/commit/c24df604c5b46393c8ca536aa2433306ff971568))
+* period selector for weight chart ([8280a1c](https://github.com/kevmasonk1/mytrack/commit/8280a1cf01a80046cbe7440c22aa1e8c329ea1e3))
+
+
+### Bug Fixes
+
+* bump service worker cache to v18 so phones pick up the Christmas theme ([0232fd2](https://github.com/kevmasonk1/mytrack/commit/0232fd2b690326fe2c572329ff58d54643a82ef4))
+
 ## 1.0.0 (2026-11-01)
 
 
